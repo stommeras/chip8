@@ -1,0 +1,9 @@
+{
+  "name": "chip8",
+  "private": true,
+  "scripts": {
+    "build:zig": "cd zig && zig build -Doptimize=ReleaseSmall",
+    "build:rust": "cd rust && cargo build --target wasm32-unknown-unknown --release",
+    "dev": "bunx serve web"
+  }
+}

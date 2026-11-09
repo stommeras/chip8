@@ -1,0 +1,5 @@
+.zig-cache/
+zig-out/
+rust/target/
+web/*.wasm
+node_modules/
