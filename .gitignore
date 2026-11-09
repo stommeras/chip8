@@ -3,3 +3,5 @@ zig-out/
 rust/target/
 web/*.wasm
 node_modules/
+# Downloaded by `bun run roms`. The test suite is GPL-3.0, so its ROMs aren't committed here.
+roms/*.ch8
