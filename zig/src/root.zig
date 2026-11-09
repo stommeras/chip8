@@ -86,8 +86,13 @@ pub const Chip8 = struct {
             0x5 => if (self.v[x] == self.v[y]) self.skip(),
             0x6 => self.v[x] = nn,
             0x7 => self.v[x] +%= nn,
+            0x8 => switch (n) {
+                0x0 => self.v[x] = self.v[y],
+                else => return error.UnknownOpcode,
+            },
             0x9 => if (self.v[x] != self.v[y]) self.skip(),
             0xA => self.i = nnn,
+            0xC => self.v[x] = self.rng.random().int(u8) & nn,
             0xD => self.draw(x, y, n),
             0xF => switch (nn) {
                 0x07 => self.v[x] = self.delay_timer,
