@@ -20,7 +20,7 @@ pub fn main(init: std.process.Init) !void {
     const rom = try Io.Dir.cwd().readFile(io, args[1], &rom_buffer);
 
     var machine = chip8.Chip8.init(0);
-    try machine.loadRom(rom);
+    try machine.loadRom(rom, 0);
     for (0..steps) |_| try machine.step();
 
     var out_buffer: [4096]u8 = undefined;
