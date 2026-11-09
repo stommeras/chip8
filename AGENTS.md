@@ -11,7 +11,7 @@ Two CHIP-8 emulators, one in Zig and one in Rust, that implement the same WASM i
 
 ## Versions
 
-- Zig: **TODO, pin the version**. Zig breaks its std library and build system between releases, and your training data is likely older than this version. Don't write Zig from memory. Check the std source for this version (`zig env` prints `lib_dir`) or the language reference at ziglang.org/documentation/<version>/. When the compiler disagrees with you, the compiler is right.
+- Zig: **0.17.0**. Zig breaks its std library and build system between releases, and your training data is likely older than this version. Don't write Zig from memory. Check the std source for this version (`zig env` prints `lib_dir`) or the language reference at ziglang.org/documentation/<version>/. When the compiler disagrees with you, the compiler is right.
 - Rust: pinned in `rust/rust-toolchain.toml`.
 
 ## Conventions
