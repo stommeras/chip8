@@ -14,6 +14,10 @@ Both cores export exactly these functions with these names. All values are `u32`
 
 The cores import nothing from the host.
 
+## Errors
+
+The release builds don't check array bounds, so the cores check for themselves. An unknown opcode, a 17th nested `2NNN` call, or `00EE` with an empty stack stops the machine. `step` then does nothing until the next `load_rom`. Inside each core these are ordinary errors that the tests can see, and only the WASM exports turn them into "stopped".
+
 ## Timing
 
 The host decides the speed. The default is `step(11)` and then `tick_timers()` once per frame at 60 fps, which comes to about 660 instructions per second.
