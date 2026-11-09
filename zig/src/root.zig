@@ -80,8 +80,12 @@ pub const Chip8 = struct {
                 else => return error.UnknownOpcode,
             },
             0x1 => self.pc = nnn,
+            0x3 => if (self.v[x] == nn) self.skip(),
+            0x4 => if (self.v[x] != nn) self.skip(),
+            0x5 => if (self.v[x] == self.v[y]) self.skip(),
             0x6 => self.v[x] = nn,
             0x7 => self.v[x] +%= nn,
+            0x9 => if (self.v[x] != self.v[y]) self.skip(),
             0xA => self.i = nnn,
             0xD => self.draw(x, y, n),
             else => return error.UnknownOpcode,
@@ -108,6 +112,10 @@ pub const Chip8 = struct {
                 pixel.* ^= 1;
             }
         }
+    }
+
+    fn skip(self: *Chip8) void {
+        self.pc = (self.pc + 2) & 0xFFF;
     }
 };
 

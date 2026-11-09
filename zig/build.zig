@@ -118,8 +118,11 @@ pub fn build(b: *std.Build) void {
     // Creates an executable that will run `test` blocks from the provided module.
     // Here `mod` needs to define a target, which is why earlier we made sure to
     // set the releative field.
+    // `zig build test -Dtest-filter=8XY` runs only the tests whose name contains "8XY".
+    const test_filters = b.option([]const []const u8, "test-filter", "Only run tests whose name contains this text") orelse &.{};
     const mod_tests = b.addTest(.{
         .root_module = mod,
+        .filters = test_filters,
     });
 
     // A run step that will run the test executable.
