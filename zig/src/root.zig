@@ -55,7 +55,8 @@ pub const Chip8 = struct {
 
     /// Counts the delay and sound timers down by one, stopping at 0. The host calls it 60 times a second.
     pub fn tickTimers(self: *Chip8) void {
-        _ = self; // TODO: replace this with the countdown
+        self.delay_timer -|= 1;
+        self.sound_timer -|= 1;
     }
 
     pub fn step(self: *Chip8) error{UnknownOpcode}!void {
@@ -88,6 +89,12 @@ pub const Chip8 = struct {
             0x9 => if (self.v[x] != self.v[y]) self.skip(),
             0xA => self.i = nnn,
             0xD => self.draw(x, y, n),
+            0xF => switch (nn) {
+                0x07 => self.v[x] = self.delay_timer,
+                0x15 => self.delay_timer = self.v[x],
+                0x18 => self.sound_timer = self.v[x],
+                else => return error.UnknownOpcode,
+            },
             else => return error.UnknownOpcode,
         }
     }
