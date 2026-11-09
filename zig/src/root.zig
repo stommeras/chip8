@@ -57,7 +57,65 @@ pub const Chip8 = struct {
         if (rom.len > memory_size - program_start) return error.RomTooLarge;
         @memcpy(self.memory[program_start..][0..rom.len], rom);
     }
+
+    pub fn step(self: *Chip8) error{UnknownOpcode}!void {
+        // Fetch
+        const hi = self.memory[self.pc];
+        const lo = self.memory[(self.pc + 1) & 0xFFF];
+        const opcode = (@as(u16, hi) << 8) | lo;
+        self.pc = (self.pc + 2) & 0xFFF;
+
+        // Decode
+        const op: u4 = @truncate(opcode >> 12);
+        const x: u4 = @truncate(opcode >> 8);
+        const y: u4 = @truncate(opcode >> 4);
+        const n: u4 = @truncate(opcode);
+        const nn: u8 = @truncate(opcode);
+        const nnn: u12 = @truncate(opcode);
+
+        // Execute
+        switch (op) {
+            0x0 => switch (opcode) {
+                0x00E0 => @memset(&self.display, 0),
+                else => return error.UnknownOpcode,
+            },
+            0x1 => self.pc = nnn,
+            0x6 => self.v[x] = nn,
+            0x7 => self.v[x] +%= nn,
+            0xA => self.i = nnn,
+            0xD => self.draw(x, y, n),
+            else => return error.UnknownOpcode,
+        }
+    }
+
+    fn draw(self: *Chip8, x: u4, y: u4, n: u4) void {
+        const start_x = self.v[x] % width;
+        const start_y = self.v[y] % height;
+        self.v[0xF] = 0;
+
+        for (0..n) |row| {
+            const py = start_y + row;
+            if (py >= height) break;
+            const sprite = self.memory[(self.i + row) & 0xFFF];
+
+            for (0..8) |col| {
+                const px = start_x + col;
+                if (px >= width) break;
+                if (sprite & (@as(u8, 0x80) >> @intCast(col)) == 0) continue;
+
+                const pixel = &self.display[py * width + px];
+                if (pixel.* == 1) self.v[0xF] = 1;
+                pixel.* ^= 1;
+            }
+        }
+    }
 };
+
+fn machineWith(rom: []const u8) !Chip8 {
+    var c = Chip8.init(0);
+    try c.loadRom(rom);
+    return c;
+}
 
 test "init puts the font at 0x50 and starts at 0x200" {
     const c = Chip8.init(0);
@@ -76,4 +134,68 @@ test "loadRom rejects a ROM that doesn't fit" {
     var c = Chip8.init(0);
     const too_big: [memory_size - program_start + 1]u8 = @splat(0);
     try std.testing.expectError(error.RomTooLarge, c.loadRom(&too_big));
+}
+
+test "6XNN sets VX" {
+    var c = try machineWith(&.{ 0x6A, 0x05 });
+    try c.step();
+    try std.testing.expectEqual(5, c.v[0xA]);
+    try std.testing.expectEqual(0x202, c.pc);
+}
+
+test "7XNN adds to VX, wraps, and leaves VF alone" {
+    var c = try machineWith(&.{ 0x60, 0xFF, 0x70, 0x02 });
+    try c.step();
+    try c.step();
+    try std.testing.expectEqual(1, c.v[0]);
+    try std.testing.expectEqual(0, c.v[0xF]);
+}
+
+test "1NNN jumps" {
+    var c = try machineWith(&.{ 0x12, 0x34 });
+    try c.step();
+    try std.testing.expectEqual(0x234, c.pc);
+}
+
+test "ANNN sets I" {
+    var c = try machineWith(&.{ 0xA1, 0x23 });
+    try c.step();
+    try std.testing.expectEqual(0x123, c.i);
+}
+
+test "00E0 clears the screen" {
+    var c = try machineWith(&.{ 0x00, 0xE0 });
+    c.display[5] = 1;
+    try c.step();
+    try std.testing.expect(std.mem.allEqual(u8, &c.display, 0));
+}
+
+test "DXYN draws a sprite, and drawing it again erases it and sets VF" {
+    // I = font "0", then draw it twice at (V0, V0) = (0, 0)
+    var c = try machineWith(&.{ 0xA0, 0x50, 0xD0, 0x05, 0xD0, 0x05 });
+    try c.step();
+    try c.step();
+    try std.testing.expectEqualSlices(u8, &.{ 1, 1, 1, 1, 0 }, c.display[0..5]);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 0, 0, 1, 0 }, c.display[width..][0..5]);
+    try std.testing.expectEqual(0, c.v[0xF]);
+
+    try c.step();
+    try std.testing.expect(std.mem.allEqual(u8, &c.display, 0));
+    try std.testing.expectEqual(1, c.v[0xF]);
+}
+
+test "DXYN clips at the right and bottom edges" {
+    // V0 = 62, so x = 62 and y = 62 % 32 = 30
+    var c = try machineWith(&.{ 0x60, 62, 0xA0, 0x50, 0xD0, 0x05 });
+    for (0..3) |_| try c.step();
+    try std.testing.expectEqual(1, c.display[30 * width + 62]);
+    try std.testing.expectEqual(1, c.display[30 * width + 63]);
+    try std.testing.expectEqual(1, c.display[31 * width + 62]);
+    try std.testing.expectEqual(0, c.display[30 * width + 0]);
+    try std.testing.expectEqual(0, c.display[0 * width + 62]);
+}
+
+test "unknown opcodes return an error" {
+    var c = try machineWith(&.{ 0x01, 0x23 });
+    try std.testing.expectError(error.UnknownOpcode, c.step());
 }
