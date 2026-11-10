@@ -88,6 +88,28 @@ pub const Chip8 = struct {
             0x7 => self.v[x] +%= nn,
             0x8 => switch (n) {
                 0x0 => self.v[x] = self.v[y],
+                0x1 => {
+                    self.v[x] |= self.v[y];
+                    self.v[0xF] = 0;
+                },
+                0x2 => {
+                    self.v[x] &= self.v[y];
+                    self.v[0xF] = 0;
+                },
+                0x3 => {
+                    self.v[x] ^= self.v[y];
+                    self.v[0xF] = 0;
+                },
+                0x6 => {
+                    const old_y = self.v[y];
+                    self.v[x] = self.v[y] >> 1;
+                    self.v[0xF] = old_y & 1;
+                },
+                0xE => {
+                    const old_y = self.v[y];
+                    self.v[x] = self.v[y] << 1;
+                    self.v[0xF] = old_y >> 7;
+                },
                 else => return error.UnknownOpcode,
             },
             0x9 => if (self.v[x] != self.v[y]) self.skip(),
@@ -387,6 +409,20 @@ test "8XY6 shifts VY right into VX and sets VF to the bit shifted out" {
     try std.testing.expectEqual(0x02, c.v[0]);
     try std.testing.expectEqual(1, c.v[0xF]);
     try std.testing.expectEqual(0x05, c.v[1]);
+}
+
+test "8XY6 and 8XYE still set VF right when X and Y are the same register" {
+    // V1 = 5, then 8116: V1 = 5 >> 1 = 2, and the bit shifted out is 1
+    var right = try machineWith(&.{ 0x61, 0x05, 0x81, 0x16 });
+    try runSteps(&right, 2);
+    try std.testing.expectEqual(0x02, right.v[1]);
+    try std.testing.expectEqual(1, right.v[0xF]);
+
+    // V1 = 0x81, then 811E: V1 = 0x02, and the bit shifted out is 1
+    var left = try machineWith(&.{ 0x61, 0x81, 0x81, 0x1E });
+    try runSteps(&left, 2);
+    try std.testing.expectEqual(0x02, left.v[1]);
+    try std.testing.expectEqual(1, left.v[0xF]);
 }
 
 test "8XY7 subtracts VX from VY and sets VF to 1 when there's no borrow" {
