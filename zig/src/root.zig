@@ -38,6 +38,8 @@ pub const Chip8 = struct {
     display: [width * height]u8 = @splat(0),
     keys: [16]bool = @splat(false),
     rng: std.Random.DefaultPrng,
+    /// While FX0A waits, the key that went down. FX0A finishes when it comes back up.
+    held_key: ?u4 = null,
 
     pub fn init(seed: u64) Chip8 {
         var c: Chip8 = .{ .rng = .init(seed) };
@@ -59,7 +61,7 @@ pub const Chip8 = struct {
         self.sound_timer -|= 1;
     }
 
-    pub fn step(self: *Chip8) error{UnknownOpcode}!void {
+    pub fn step(self: *Chip8) error{ UnknownOpcode, StackOverflow, StackUnderflow }!void {
         // Fetch
         const hi = self.memory[self.pc];
         const lo = self.memory[(self.pc + 1) & 0xFFF];
@@ -78,9 +80,20 @@ pub const Chip8 = struct {
         switch (op) {
             0x0 => switch (opcode) {
                 0x00E0 => @memset(&self.display, 0),
+                0x00EE => {
+                    if (self.sp == 0) return error.StackUnderflow;
+                    self.sp -= 1;
+                    self.pc = self.stack[self.sp];
+                },
                 else => return error.UnknownOpcode,
             },
             0x1 => self.pc = nnn,
+            0x2 => {
+                if (self.sp == self.stack.len) return error.StackOverflow;
+                self.stack[self.sp] = self.pc;
+                self.sp += 1;
+                self.pc = nnn;
+            },
             0x3 => if (self.v[x] == nn) self.skip(),
             0x4 => if (self.v[x] != nn) self.skip(),
             0x5 => if (self.v[x] == self.v[y]) self.skip(),
@@ -131,16 +144,66 @@ pub const Chip8 = struct {
             },
             0x9 => if (self.v[x] != self.v[y]) self.skip(),
             0xA => self.i = nnn,
+            0xB => self.pc = (nnn + @as(u16, self.v[0])) & 0xFFF,
             0xC => self.v[x] = self.rng.random().int(u8) & nn,
             0xD => self.draw(x, y, n),
+            0xE => {
+                // Only the low 4 bits of VX name a key.
+                const pressed = self.keys[@as(u4, @truncate(self.v[x]))];
+                switch (nn) {
+                    0x9E => if (pressed) self.skip(),
+                    0xA1 => if (!pressed) self.skip(),
+                    else => return error.UnknownOpcode,
+                }
+            },
             0xF => switch (nn) {
                 0x07 => self.v[x] = self.delay_timer,
+                0x0A => self.waitForKey(x),
                 0x15 => self.delay_timer = self.v[x],
                 0x18 => self.sound_timer = self.v[x],
+                0x1E => self.i = (self.i + self.v[x]) & 0xFFF,
+                0x29 => self.i = font_start + @as(u16, self.v[x] & 0xF) * 5,
+                0x33 => {
+                    const value = self.v[x];
+                    self.memory[self.i & 0xFFF] = value / 100;
+                    self.memory[(self.i + 1) & 0xFFF] = value / 10 % 10;
+                    self.memory[(self.i + 2) & 0xFFF] = value % 10;
+                },
+                0x55 => {
+                    for (0..@as(usize, x) + 1) |r| {
+                        self.memory[(self.i + r) & 0xFFF] = self.v[r];
+                    }
+                    self.i = (self.i + x + 1) & 0xFFF;
+                },
+                0x65 => {
+                    for (0..@as(usize, x) + 1) |r| {
+                        self.v[r] = self.memory[(self.i + r) & 0xFFF];
+                    }
+                    self.i = (self.i + x + 1) & 0xFFF;
+                },
                 else => return error.UnknownOpcode,
             },
-            else => return error.UnknownOpcode,
         }
+    }
+
+    /// FX0A: waits for a key to go down and come back up, then stores it in VX.
+    /// Waiting means moving pc back, so the same instruction runs again next step.
+    fn waitForKey(self: *Chip8, x: u4) void {
+        if (self.held_key) |key| {
+            if (!self.keys[key]) {
+                self.v[x] = key;
+                self.held_key = null;
+                return;
+            }
+        } else {
+            for (self.keys, 0..) |down, key| {
+                if (down) {
+                    self.held_key = @intCast(key);
+                    break;
+                }
+            }
+        }
+        self.pc = (self.pc -% 2) & 0xFFF;
     }
 
     fn draw(self: *Chip8, x: u4, y: u4, n: u4) void {

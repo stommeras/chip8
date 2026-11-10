@@ -5,6 +5,6 @@
     "build:zig": "cd zig && zig build -Doptimize=ReleaseSmall",
     "build:rust": "cd rust && cargo build --target wasm32-unknown-unknown --release",
     "dev": "bunx serve web",
-    "roms": "curl -sSfL --create-dirs -o roms/2-ibm-logo.ch8 https://raw.githubusercontent.com/Timendus/chip8-test-suite/742e9eac9f5d44466c1c9d83fcaa8158c6683cb1/bin/2-ibm-logo.ch8"
+    "roms": "curl -sSfL --create-dirs -o \"roms/#1.ch8\" \"https://raw.githubusercontent.com/Timendus/chip8-test-suite/742e9eac9f5d44466c1c9d83fcaa8158c6683cb1/bin/{2-ibm-logo,3-corax+,4-flags}.ch8\""
   }
 }
