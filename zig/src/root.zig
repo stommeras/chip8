@@ -100,10 +100,27 @@ pub const Chip8 = struct {
                     self.v[x] ^= self.v[y];
                     self.v[0xF] = 0;
                 },
+                0x4 => {
+                    const sum, const carry = @addWithOverflow(self.v[x], self.v[y]);
+                    self.v[x] = sum;
+                    self.v[0xF] = carry;
+                },
+                0x5 => {
+                    const old_x = self.v[x];
+                    const old_y = self.v[y];
+                    self.v[x] -%= self.v[y];
+                    self.v[0xF] = if (old_x >= old_y) 1 else 0;
+                },
                 0x6 => {
                     const old_y = self.v[y];
                     self.v[x] = self.v[y] >> 1;
                     self.v[0xF] = old_y & 1;
+                },
+                0x7 => {
+                    const old_x = self.v[x];
+                    const old_y = self.v[y];
+                    self.v[x] = self.v[y] -% self.v[x];
+                    self.v[0xF] = if (old_y >= old_x) 1 else 0;
                 },
                 0xE => {
                     const old_y = self.v[y];
@@ -460,6 +477,11 @@ test "when X is F, the flag overwrites the result" {
     var shift = try machineWith(&.{ 0x61, 0x04, 0x8F, 0x16 });
     try runSteps(&shift, 2);
     try std.testing.expectEqual(0, shift.v[0xF]);
+
+    // VF = 5 - 3 (V1 - VF) would be 0x02, but "no borrow" is written last.
+    var reverse_sub = try machineWith(&.{ 0x6F, 0x03, 0x61, 0x05, 0x8F, 0x17 });
+    try runSteps(&reverse_sub, 3);
+    try std.testing.expectEqual(1, reverse_sub.v[0xF]);
 }
 
 // Memory
