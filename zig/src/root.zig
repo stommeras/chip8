@@ -29,9 +29,10 @@ const font = [80]u8{
 pub const Chip8 = struct {
     memory: [memory_size]u8 = @splat(0),
     v: [16]u8 = @splat(0),
-    i: u16 = 0,
-    pc: u16 = program_start,
-    stack: [16]u16 = @splat(0),
+    // Addresses are u12, so they can't point past memory, and +% wraps them at 0xFFF.
+    i: u12 = 0,
+    pc: u12 = program_start,
+    stack: [16]u12 = @splat(0),
     sp: u8 = 0,
     delay_timer: u8 = 0,
     sound_timer: u8 = 0,
@@ -64,9 +65,9 @@ pub const Chip8 = struct {
     pub fn step(self: *Chip8) error{ UnknownOpcode, StackOverflow, StackUnderflow }!void {
         // Fetch
         const hi = self.memory[self.pc];
-        const lo = self.memory[(self.pc + 1) & 0xFFF];
+        const lo = self.memory[self.pc +% 1];
         const opcode = (@as(u16, hi) << 8) | lo;
-        self.pc = (self.pc + 2) & 0xFFF;
+        self.pc +%= 2;
 
         // Decode
         const op: u4 = @truncate(opcode >> 12);
@@ -101,6 +102,7 @@ pub const Chip8 = struct {
             0x7 => self.v[x] +%= nn,
             0x8 => switch (n) {
                 0x0 => self.v[x] = self.v[y],
+                // COSMAC VIP quirk: the logic ops reset VF (SPEC.md).
                 0x1 => {
                     self.v[x] |= self.v[y];
                     self.v[0xF] = 0;
@@ -119,32 +121,30 @@ pub const Chip8 = struct {
                     self.v[0xF] = carry;
                 },
                 0x5 => {
-                    const old_x = self.v[x];
-                    const old_y = self.v[y];
-                    self.v[x] -%= self.v[y];
-                    self.v[0xF] = if (old_x >= old_y) 1 else 0;
+                    const difference, const borrow = @subWithOverflow(self.v[x], self.v[y]);
+                    self.v[x] = difference;
+                    self.v[0xF] = 1 - borrow;
                 },
                 0x6 => {
-                    const old_y = self.v[y];
+                    const shifted_out = self.v[y] & 1;
                     self.v[x] = self.v[y] >> 1;
-                    self.v[0xF] = old_y & 1;
+                    self.v[0xF] = shifted_out;
                 },
                 0x7 => {
-                    const old_x = self.v[x];
-                    const old_y = self.v[y];
-                    self.v[x] = self.v[y] -% self.v[x];
-                    self.v[0xF] = if (old_y >= old_x) 1 else 0;
+                    const difference, const borrow = @subWithOverflow(self.v[y], self.v[x]);
+                    self.v[x] = difference;
+                    self.v[0xF] = 1 - borrow;
                 },
                 0xE => {
-                    const old_y = self.v[y];
-                    self.v[x] = self.v[y] << 1;
-                    self.v[0xF] = old_y >> 7;
+                    const shifted, const shifted_out = @shlWithOverflow(self.v[y], 1);
+                    self.v[x] = shifted;
+                    self.v[0xF] = shifted_out;
                 },
                 else => return error.UnknownOpcode,
             },
             0x9 => if (self.v[x] != self.v[y]) self.skip(),
             0xA => self.i = nnn,
-            0xB => self.pc = (nnn + @as(u16, self.v[0])) & 0xFFF,
+            0xB => self.pc = nnn +% self.v[0],
             0xC => self.v[x] = self.rng.random().int(u8) & nn,
             0xD => self.draw(x, y, n),
             0xE => {
@@ -161,25 +161,22 @@ pub const Chip8 = struct {
                 0x0A => self.waitForKey(x),
                 0x15 => self.delay_timer = self.v[x],
                 0x18 => self.sound_timer = self.v[x],
-                0x1E => self.i = (self.i + self.v[x]) & 0xFFF,
-                0x29 => self.i = font_start + @as(u16, self.v[x] & 0xF) * 5,
+                0x1E => self.i +%= self.v[x],
+                0x29 => self.i = font_start + @as(u12, self.v[x] & 0xF) * 5,
                 0x33 => {
                     const value = self.v[x];
-                    self.memory[self.i & 0xFFF] = value / 100;
-                    self.memory[(self.i + 1) & 0xFFF] = value / 10 % 10;
-                    self.memory[(self.i + 2) & 0xFFF] = value % 10;
+                    self.memory[self.i] = value / 100;
+                    self.memory[self.i +% 1] = value / 10 % 10;
+                    self.memory[self.i +% 2] = value % 10;
                 },
-                0x55 => {
-                    for (0..@as(usize, x) + 1) |r| {
-                        self.memory[(self.i + r) & 0xFFF] = self.v[r];
-                    }
-                    self.i = (self.i + x + 1) & 0xFFF;
+                // Like the COSMAC VIP, these move I one step per register, so I ends at I + X + 1.
+                0x55 => for (self.v[0 .. @as(usize, x) + 1]) |register| {
+                    self.memory[self.i] = register;
+                    self.i +%= 1;
                 },
-                0x65 => {
-                    for (0..@as(usize, x) + 1) |r| {
-                        self.v[r] = self.memory[(self.i + r) & 0xFFF];
-                    }
-                    self.i = (self.i + x + 1) & 0xFFF;
+                0x65 => for (self.v[0 .. @as(usize, x) + 1]) |*register| {
+                    register.* = self.memory[self.i];
+                    self.i +%= 1;
                 },
                 else => return error.UnknownOpcode,
             },
@@ -195,15 +192,10 @@ pub const Chip8 = struct {
                 self.held_key = null;
                 return;
             }
-        } else {
-            for (self.keys, 0..) |down, key| {
-                if (down) {
-                    self.held_key = @intCast(key);
-                    break;
-                }
-            }
+        } else if (std.mem.findScalar(bool, &self.keys, true)) |key| {
+            self.held_key = @intCast(key);
         }
-        self.pc = (self.pc -% 2) & 0xFFF;
+        self.pc -%= 2;
     }
 
     fn draw(self: *Chip8, x: u4, y: u4, n: u4) void {
@@ -214,7 +206,7 @@ pub const Chip8 = struct {
         for (0..n) |row| {
             const py = start_y + row;
             if (py >= height) break;
-            const sprite = self.memory[(self.i + row) & 0xFFF];
+            const sprite = self.memory[self.i +% @as(u12, @intCast(row))];
 
             for (0..8) |col| {
                 const px = start_x + col;
@@ -229,7 +221,7 @@ pub const Chip8 = struct {
     }
 
     fn skip(self: *Chip8) void {
-        self.pc = (self.pc + 2) & 0xFFF;
+        self.pc +%= 2;
     }
 };
 
@@ -345,8 +337,7 @@ test "unknown opcodes return an error" {
     try std.testing.expectError(error.UnknownOpcode, c.step());
 }
 
-// The remaining 29 instructions. Each test fails until its instruction works.
-// The behavior follows the COSMAC VIP, as SPEC.md describes.
+// The other instructions. The behavior follows the COSMAC VIP, as SPEC.md describes.
 
 fn runSteps(c: *Chip8, count: usize) !void {
     for (0..count) |_| try c.step();
@@ -678,4 +669,21 @@ test "FX0A waits until a key is pressed and released, then stores it in VX" {
     try c.step();
     try std.testing.expectEqual(7, c.v[0]);
     try std.testing.expectEqual(0x202, c.pc);
+}
+
+test "addresses wrap from 0xFFF to 0x000" {
+    // V0..V2 = 1, 2, 3, I = 0xFFE, then FX55 stores across the end of memory.
+    var c = try machineWith(&.{ 0x60, 1, 0x61, 2, 0x62, 3, 0xAF, 0xFE, 0xF2, 0x55 });
+    try runSteps(&c, 5);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, c.memory[0xFFE..]);
+    try std.testing.expectEqual(3, c.memory[0x000]);
+    try std.testing.expectEqual(0x001, c.i);
+
+    // An instruction at 0xFFF has its second byte at 0x000.
+    c.pc = 0xFFF;
+    c.memory[0xFFF] = 0x6B;
+    c.memory[0x000] = 0x07;
+    try c.step();
+    try std.testing.expectEqual(7, c.v[0xB]);
+    try std.testing.expectEqual(0x001, c.pc);
 }
