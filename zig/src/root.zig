@@ -29,15 +29,18 @@ const font = [80]u8{
 pub const Chip8 = struct {
     memory: [memory_size]u8 = @splat(0),
     v: [16]u8 = @splat(0),
-    i: u16 = 0,
-    pc: u16 = program_start,
-    stack: [16]u16 = @splat(0),
+    // Addresses are u12, so they can't point past memory, and +% wraps them at 0xFFF.
+    i: u12 = 0,
+    pc: u12 = program_start,
+    stack: [16]u12 = @splat(0),
     sp: u8 = 0,
     delay_timer: u8 = 0,
     sound_timer: u8 = 0,
     display: [width * height]u8 = @splat(0),
     keys: [16]bool = @splat(false),
     rng: std.Random.DefaultPrng,
+    /// While FX0A waits, the key that went down. FX0A finishes when it comes back up.
+    held_key: ?u4 = null,
 
     pub fn init(seed: u64) Chip8 {
         var c: Chip8 = .{ .rng = .init(seed) };
@@ -53,12 +56,18 @@ pub const Chip8 = struct {
         @memcpy(self.memory[program_start..][0..rom.len], rom);
     }
 
-    pub fn step(self: *Chip8) error{UnknownOpcode}!void {
+    /// Counts the delay and sound timers down by one, stopping at 0. The host calls it 60 times a second.
+    pub fn tickTimers(self: *Chip8) void {
+        self.delay_timer -|= 1;
+        self.sound_timer -|= 1;
+    }
+
+    pub fn step(self: *Chip8) error{ UnknownOpcode, StackOverflow, StackUnderflow }!void {
         // Fetch
         const hi = self.memory[self.pc];
-        const lo = self.memory[(self.pc + 1) & 0xFFF];
+        const lo = self.memory[self.pc +% 1];
         const opcode = (@as(u16, hi) << 8) | lo;
-        self.pc = (self.pc + 2) & 0xFFF;
+        self.pc +%= 2;
 
         // Decode
         const op: u4 = @truncate(opcode >> 12);
@@ -72,15 +81,121 @@ pub const Chip8 = struct {
         switch (op) {
             0x0 => switch (opcode) {
                 0x00E0 => @memset(&self.display, 0),
+                0x00EE => {
+                    if (self.sp == 0) return error.StackUnderflow;
+                    self.sp -= 1;
+                    self.pc = self.stack[self.sp];
+                },
                 else => return error.UnknownOpcode,
             },
             0x1 => self.pc = nnn,
+            0x2 => {
+                if (self.sp == self.stack.len) return error.StackOverflow;
+                self.stack[self.sp] = self.pc;
+                self.sp += 1;
+                self.pc = nnn;
+            },
+            0x3 => if (self.v[x] == nn) self.skip(),
+            0x4 => if (self.v[x] != nn) self.skip(),
+            0x5 => if (self.v[x] == self.v[y]) self.skip(),
             0x6 => self.v[x] = nn,
             0x7 => self.v[x] +%= nn,
+            0x8 => switch (n) {
+                0x0 => self.v[x] = self.v[y],
+                // COSMAC VIP quirk: the logic ops reset VF (SPEC.md).
+                0x1 => {
+                    self.v[x] |= self.v[y];
+                    self.v[0xF] = 0;
+                },
+                0x2 => {
+                    self.v[x] &= self.v[y];
+                    self.v[0xF] = 0;
+                },
+                0x3 => {
+                    self.v[x] ^= self.v[y];
+                    self.v[0xF] = 0;
+                },
+                0x4 => {
+                    const sum, const carry = @addWithOverflow(self.v[x], self.v[y]);
+                    self.v[x] = sum;
+                    self.v[0xF] = carry;
+                },
+                0x5 => {
+                    const difference, const borrow = @subWithOverflow(self.v[x], self.v[y]);
+                    self.v[x] = difference;
+                    self.v[0xF] = 1 - borrow;
+                },
+                0x6 => {
+                    const shifted_out = self.v[y] & 1;
+                    self.v[x] = self.v[y] >> 1;
+                    self.v[0xF] = shifted_out;
+                },
+                0x7 => {
+                    const difference, const borrow = @subWithOverflow(self.v[y], self.v[x]);
+                    self.v[x] = difference;
+                    self.v[0xF] = 1 - borrow;
+                },
+                0xE => {
+                    const shifted, const shifted_out = @shlWithOverflow(self.v[y], 1);
+                    self.v[x] = shifted;
+                    self.v[0xF] = shifted_out;
+                },
+                else => return error.UnknownOpcode,
+            },
+            0x9 => if (self.v[x] != self.v[y]) self.skip(),
             0xA => self.i = nnn,
+            0xB => self.pc = nnn +% self.v[0],
+            0xC => self.v[x] = self.rng.random().int(u8) & nn,
             0xD => self.draw(x, y, n),
-            else => return error.UnknownOpcode,
+            0xE => {
+                // Only the low 4 bits of VX name a key.
+                const pressed = self.keys[@as(u4, @truncate(self.v[x]))];
+                switch (nn) {
+                    0x9E => if (pressed) self.skip(),
+                    0xA1 => if (!pressed) self.skip(),
+                    else => return error.UnknownOpcode,
+                }
+            },
+            0xF => switch (nn) {
+                0x07 => self.v[x] = self.delay_timer,
+                0x0A => self.waitForKey(x),
+                0x15 => self.delay_timer = self.v[x],
+                0x18 => self.sound_timer = self.v[x],
+                0x1E => self.i +%= self.v[x],
+                0x29 => self.i = font_start + @as(u12, self.v[x] & 0xF) * 5,
+                0x33 => {
+                    const value = self.v[x];
+                    self.memory[self.i] = value / 100;
+                    self.memory[self.i +% 1] = value / 10 % 10;
+                    self.memory[self.i +% 2] = value % 10;
+                },
+                // Like the COSMAC VIP, these move I one step per register, so I ends at I + X + 1.
+                0x55 => for (self.v[0 .. @as(usize, x) + 1]) |register| {
+                    self.memory[self.i] = register;
+                    self.i +%= 1;
+                },
+                0x65 => for (self.v[0 .. @as(usize, x) + 1]) |*register| {
+                    register.* = self.memory[self.i];
+                    self.i +%= 1;
+                },
+                else => return error.UnknownOpcode,
+            },
         }
+    }
+
+    /// FX0A: waits for a key to go down and come back up, then stores it in VX.
+    /// Waiting means moving pc back, so the same instruction runs again next step.
+    fn waitForKey(self: *Chip8, x: u4) void {
+        if (self.held_key) |key| {
+            if (!self.keys[key]) {
+                self.v[x] = key;
+                self.held_key = null;
+                return;
+            }
+        } else if (std.mem.findScalar(bool, &self.keys, true)) |key| {
+            self.held_key = @intCast(key);
+        }
+        self.pc -%= 2;
     }
 
     fn draw(self: *Chip8, x: u4, y: u4, n: u4) void {
@@ -91,7 +206,7 @@ pub const Chip8 = struct {
         for (0..n) |row| {
             const py = start_y + row;
             if (py >= height) break;
-            const sprite = self.memory[(self.i + row) & 0xFFF];
+            const sprite = self.memory[self.i +% @as(u12, @intCast(row))];
 
             for (0..8) |col| {
                 const px = start_x + col;
@@ -103,6 +218,10 @@ pub const Chip8 = struct {
                 pixel.* ^= 1;
             }
         }
+    }
+
+    fn skip(self: *Chip8) void {
+        self.pc +%= 2;
     }
 };
 
@@ -216,4 +335,355 @@ test "DXYN clips at the right and bottom edges" {
 test "unknown opcodes return an error" {
     var c = try machineWith(&.{ 0x01, 0x23 });
     try std.testing.expectError(error.UnknownOpcode, c.step());
+}
+
+// The other instructions. The behavior follows the COSMAC VIP, as SPEC.md describes.
+
+fn runSteps(c: *Chip8, count: usize) !void {
+    for (0..count) |_| try c.step();
+}
+
+// Skips. A skip moves pc past one more instruction, so 2 extra bytes.
+
+test "3XNN skips when VX equals NN" {
+    var equal = try machineWith(&.{ 0x60, 0x05, 0x30, 0x05 });
+    try runSteps(&equal, 2);
+    try std.testing.expectEqual(0x206, equal.pc);
+
+    var different = try machineWith(&.{ 0x60, 0x05, 0x30, 0x06 });
+    try runSteps(&different, 2);
+    try std.testing.expectEqual(0x204, different.pc);
+}
+
+test "4XNN skips when VX differs from NN" {
+    var different = try machineWith(&.{ 0x60, 0x05, 0x40, 0x06 });
+    try runSteps(&different, 2);
+    try std.testing.expectEqual(0x206, different.pc);
+
+    var equal = try machineWith(&.{ 0x60, 0x05, 0x40, 0x05 });
+    try runSteps(&equal, 2);
+    try std.testing.expectEqual(0x204, equal.pc);
+}
+
+test "5XY0 skips when VX equals VY" {
+    var equal = try machineWith(&.{ 0x60, 0x05, 0x61, 0x05, 0x50, 0x10 });
+    try runSteps(&equal, 3);
+    try std.testing.expectEqual(0x208, equal.pc);
+
+    var different = try machineWith(&.{ 0x60, 0x05, 0x61, 0x06, 0x50, 0x10 });
+    try runSteps(&different, 3);
+    try std.testing.expectEqual(0x206, different.pc);
+}
+
+test "9XY0 skips when VX differs from VY" {
+    var different = try machineWith(&.{ 0x60, 0x05, 0x61, 0x06, 0x90, 0x10 });
+    try runSteps(&different, 3);
+    try std.testing.expectEqual(0x208, different.pc);
+
+    var equal = try machineWith(&.{ 0x60, 0x05, 0x61, 0x05, 0x90, 0x10 });
+    try runSteps(&equal, 3);
+    try std.testing.expectEqual(0x206, equal.pc);
+}
+
+// Subroutines
+
+test "2NNN pushes the return address and jumps" {
+    var c = try machineWith(&.{ 0x22, 0x06 });
+    try c.step();
+    try std.testing.expectEqual(0x206, c.pc);
+    try std.testing.expectEqual(1, c.sp);
+    try std.testing.expectEqual(0x202, c.stack[0]);
+}
+
+test "00EE returns to the instruction after the call" {
+    // 0x200: call 0x204. 0x204: return.
+    var c = try machineWith(&.{ 0x22, 0x04, 0x00, 0x00, 0x00, 0xEE });
+    try runSteps(&c, 2);
+    try std.testing.expectEqual(0x202, c.pc);
+    try std.testing.expectEqual(0, c.sp);
+}
+
+test "a 17th nested call is a stack overflow" {
+    // 0x200 calls itself, so every step pushes one more address.
+    var c = try machineWith(&.{ 0x22, 0x00 });
+    try runSteps(&c, 16);
+    try std.testing.expectError(error.StackOverflow, c.step());
+}
+
+test "00EE with an empty stack is a stack underflow" {
+    var c = try machineWith(&.{ 0x00, 0xEE });
+    try std.testing.expectError(error.StackUnderflow, c.step());
+}
+
+// Arithmetic. Each ROM sets VF first, so a test notices when VF isn't written.
+
+test "8XY0 copies VY into VX" {
+    var c = try machineWith(&.{ 0x61, 0x07, 0x80, 0x10 });
+    try runSteps(&c, 2);
+    try std.testing.expectEqual(7, c.v[0]);
+}
+
+test "8XY1 ORs and resets VF" {
+    var c = try machineWith(&.{ 0x6F, 0x01, 0x60, 0x0F, 0x61, 0xF0, 0x80, 0x11 });
+    try runSteps(&c, 4);
+    try std.testing.expectEqual(0xFF, c.v[0]);
+    try std.testing.expectEqual(0, c.v[0xF]);
+}
+
+test "8XY2 ANDs and resets VF" {
+    var c = try machineWith(&.{ 0x6F, 0x01, 0x60, 0x0F, 0x61, 0x3C, 0x80, 0x12 });
+    try runSteps(&c, 4);
+    try std.testing.expectEqual(0x0C, c.v[0]);
+    try std.testing.expectEqual(0, c.v[0xF]);
+}
+
+test "8XY3 XORs and resets VF" {
+    var c = try machineWith(&.{ 0x6F, 0x01, 0x60, 0x0F, 0x61, 0x3C, 0x80, 0x13 });
+    try runSteps(&c, 4);
+    try std.testing.expectEqual(0x33, c.v[0]);
+    try std.testing.expectEqual(0, c.v[0xF]);
+}
+
+test "8XY4 adds and sets VF to the carry" {
+    var carry = try machineWith(&.{ 0x6F, 0x00, 0x60, 0xFF, 0x61, 0x02, 0x80, 0x14 });
+    try runSteps(&carry, 4);
+    try std.testing.expectEqual(0x01, carry.v[0]);
+    try std.testing.expectEqual(1, carry.v[0xF]);
+
+    var no_carry = try machineWith(&.{ 0x6F, 0x01, 0x60, 0x01, 0x61, 0x02, 0x80, 0x14 });
+    try runSteps(&no_carry, 4);
+    try std.testing.expectEqual(0x03, no_carry.v[0]);
+    try std.testing.expectEqual(0, no_carry.v[0xF]);
+}
+
+test "8XY5 subtracts VY from VX and sets VF to 1 when there's no borrow" {
+    var no_borrow = try machineWith(&.{ 0x6F, 0x00, 0x60, 0x05, 0x61, 0x03, 0x80, 0x15 });
+    try runSteps(&no_borrow, 4);
+    try std.testing.expectEqual(0x02, no_borrow.v[0]);
+    try std.testing.expectEqual(1, no_borrow.v[0xF]);
+
+    var borrow = try machineWith(&.{ 0x6F, 0x01, 0x60, 0x03, 0x61, 0x05, 0x80, 0x15 });
+    try runSteps(&borrow, 4);
+    try std.testing.expectEqual(0xFE, borrow.v[0]);
+    try std.testing.expectEqual(0, borrow.v[0xF]);
+
+    // Equal values don't borrow, so VF is 1 here too.
+    var equal = try machineWith(&.{ 0x6F, 0x00, 0x60, 0x05, 0x61, 0x05, 0x80, 0x15 });
+    try runSteps(&equal, 4);
+    try std.testing.expectEqual(0x00, equal.v[0]);
+    try std.testing.expectEqual(1, equal.v[0xF]);
+}
+
+test "8XY6 shifts VY right into VX and sets VF to the bit shifted out" {
+    var c = try machineWith(&.{ 0x6F, 0x00, 0x60, 0x00, 0x61, 0x05, 0x80, 0x16 });
+    try runSteps(&c, 4);
+    try std.testing.expectEqual(0x02, c.v[0]);
+    try std.testing.expectEqual(1, c.v[0xF]);
+    try std.testing.expectEqual(0x05, c.v[1]);
+}
+
+test "8XY6 and 8XYE still set VF right when X and Y are the same register" {
+    // V1 = 5, then 8116: V1 = 5 >> 1 = 2, and the bit shifted out is 1
+    var right = try machineWith(&.{ 0x61, 0x05, 0x81, 0x16 });
+    try runSteps(&right, 2);
+    try std.testing.expectEqual(0x02, right.v[1]);
+    try std.testing.expectEqual(1, right.v[0xF]);
+
+    // V1 = 0x81, then 811E: V1 = 0x02, and the bit shifted out is 1
+    var left = try machineWith(&.{ 0x61, 0x81, 0x81, 0x1E });
+    try runSteps(&left, 2);
+    try std.testing.expectEqual(0x02, left.v[1]);
+    try std.testing.expectEqual(1, left.v[0xF]);
+}
+
+test "8XY7 subtracts VX from VY and sets VF to 1 when there's no borrow" {
+    var no_borrow = try machineWith(&.{ 0x6F, 0x00, 0x60, 0x03, 0x61, 0x05, 0x80, 0x17 });
+    try runSteps(&no_borrow, 4);
+    try std.testing.expectEqual(0x02, no_borrow.v[0]);
+    try std.testing.expectEqual(1, no_borrow.v[0xF]);
+
+    var borrow = try machineWith(&.{ 0x6F, 0x01, 0x60, 0x05, 0x61, 0x03, 0x80, 0x17 });
+    try runSteps(&borrow, 4);
+    try std.testing.expectEqual(0xFE, borrow.v[0]);
+    try std.testing.expectEqual(0, borrow.v[0xF]);
+}
+
+test "8XYE shifts VY left into VX and sets VF to the bit shifted out" {
+    var c = try machineWith(&.{ 0x6F, 0x00, 0x60, 0x00, 0x61, 0x81, 0x80, 0x1E });
+    try runSteps(&c, 4);
+    try std.testing.expectEqual(0x02, c.v[0]);
+    try std.testing.expectEqual(1, c.v[0xF]);
+    try std.testing.expectEqual(0x81, c.v[1]);
+}
+
+test "when X is F, the flag overwrites the result" {
+    // VF = 0xFF + 3 would be 0x02, but the carry is written last.
+    var add = try machineWith(&.{ 0x6F, 0xFF, 0x61, 0x03, 0x8F, 0x14 });
+    try runSteps(&add, 3);
+    try std.testing.expectEqual(1, add.v[0xF]);
+
+    // VF = 5 - 3 would be 0x02, but "no borrow" is written last.
+    var sub = try machineWith(&.{ 0x6F, 0x05, 0x61, 0x03, 0x8F, 0x15 });
+    try runSteps(&sub, 3);
+    try std.testing.expectEqual(1, sub.v[0xF]);
+
+    // VF = 4 >> 1 would be 0x02, but the shifted-out bit is 0.
+    var shift = try machineWith(&.{ 0x61, 0x04, 0x8F, 0x16 });
+    try runSteps(&shift, 2);
+    try std.testing.expectEqual(0, shift.v[0xF]);
+
+    // VF = 5 - 3 (V1 - VF) would be 0x02, but "no borrow" is written last.
+    var reverse_sub = try machineWith(&.{ 0x6F, 0x03, 0x61, 0x05, 0x8F, 0x17 });
+    try runSteps(&reverse_sub, 3);
+    try std.testing.expectEqual(1, reverse_sub.v[0xF]);
+}
+
+// Memory
+
+test "BNNN jumps to NNN plus V0" {
+    var c = try machineWith(&.{ 0x60, 0x04, 0xB3, 0x00 });
+    try runSteps(&c, 2);
+    try std.testing.expectEqual(0x304, c.pc);
+}
+
+test "FX1E adds VX to I" {
+    var c = try machineWith(&.{ 0xA1, 0x00, 0x60, 0x05, 0xF0, 0x1E });
+    try runSteps(&c, 3);
+    try std.testing.expectEqual(0x105, c.i);
+}
+
+test "FX29 points I at the font character for VX" {
+    var c = try machineWith(&.{ 0x60, 0x0A, 0xF0, 0x29 });
+    try runSteps(&c, 2);
+    try std.testing.expectEqual(font_start + 0xA * 5, c.i);
+}
+
+test "FX33 stores the decimal digits of VX at I" {
+    var c = try machineWith(&.{ 0x60, 234, 0xA3, 0x00, 0xF0, 0x33 });
+    try runSteps(&c, 3);
+    try std.testing.expectEqualSlices(u8, &.{ 2, 3, 4 }, c.memory[0x300..][0..3]);
+}
+
+test "FX55 stores V0 through VX at I and moves I past them" {
+    var c = try machineWith(&.{ 0x60, 1, 0x61, 2, 0x62, 3, 0x63, 4, 0xA3, 0x00, 0xF2, 0x55 });
+    try runSteps(&c, 6);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 0 }, c.memory[0x300..][0..4]);
+    try std.testing.expectEqual(0x303, c.i);
+}
+
+test "FX65 loads V0 through VX from I and moves I past them" {
+    var c = try machineWith(&.{ 0xA3, 0x00, 0xF2, 0x65 });
+    @memcpy(c.memory[0x300..][0..4], &[_]u8{ 7, 8, 9, 10 });
+    try runSteps(&c, 2);
+    try std.testing.expectEqualSlices(u8, &.{ 7, 8, 9, 0 }, c.v[0..4]);
+    try std.testing.expectEqual(0x303, c.i);
+}
+
+// Timers and random
+
+test "FX15 sets the delay timer" {
+    var c = try machineWith(&.{ 0x60, 60, 0xF0, 0x15 });
+    try runSteps(&c, 2);
+    try std.testing.expectEqual(60, c.delay_timer);
+}
+
+test "FX18 sets the sound timer" {
+    var c = try machineWith(&.{ 0x60, 60, 0xF0, 0x18 });
+    try runSteps(&c, 2);
+    try std.testing.expectEqual(60, c.sound_timer);
+}
+
+test "FX07 reads the delay timer into VX" {
+    var c = try machineWith(&.{ 0xF0, 0x07 });
+    c.delay_timer = 42;
+    try c.step();
+    try std.testing.expectEqual(42, c.v[0]);
+}
+
+test "tickTimers counts both timers down and stops at 0" {
+    var c = Chip8.init(0);
+    c.delay_timer = 2;
+    c.sound_timer = 1;
+    c.tickTimers();
+    try std.testing.expectEqual(1, c.delay_timer);
+    try std.testing.expectEqual(0, c.sound_timer);
+    c.tickTimers();
+    try std.testing.expectEqual(0, c.delay_timer);
+    try std.testing.expectEqual(0, c.sound_timer);
+}
+
+test "CXNN masks a random byte with NN" {
+    for (0..32) |seed| {
+        var c = Chip8.init(0);
+        try c.loadRom(&.{ 0xC0, 0x0F }, seed);
+        try c.step();
+        try std.testing.expectEqual(0, c.v[0] & 0xF0);
+    }
+}
+
+test "CXNN gives the same numbers for the same seed" {
+    var a = Chip8.init(0);
+    var b = Chip8.init(0);
+    try a.loadRom(&.{ 0xC0, 0xFF }, 7);
+    try b.loadRom(&.{ 0xC0, 0xFF }, 7);
+    try a.step();
+    try b.step();
+    try std.testing.expectEqual(a.v[0], b.v[0]);
+}
+
+// Input
+
+test "EX9E skips when the key in VX is pressed" {
+    var pressed = try machineWith(&.{ 0x60, 0x05, 0xE0, 0x9E });
+    pressed.keys[5] = true;
+    try runSteps(&pressed, 2);
+    try std.testing.expectEqual(0x206, pressed.pc);
+
+    var released = try machineWith(&.{ 0x60, 0x05, 0xE0, 0x9E });
+    try runSteps(&released, 2);
+    try std.testing.expectEqual(0x204, released.pc);
+}
+
+test "EXA1 skips when the key in VX is not pressed" {
+    var released = try machineWith(&.{ 0x60, 0x05, 0xE0, 0xA1 });
+    try runSteps(&released, 2);
+    try std.testing.expectEqual(0x206, released.pc);
+
+    var pressed = try machineWith(&.{ 0x60, 0x05, 0xE0, 0xA1 });
+    pressed.keys[5] = true;
+    try runSteps(&pressed, 2);
+    try std.testing.expectEqual(0x204, pressed.pc);
+}
+
+test "FX0A waits until a key is pressed and released, then stores it in VX" {
+    var c = try machineWith(&.{ 0xF0, 0x0A });
+
+    try c.step();
+    try std.testing.expectEqual(0x200, c.pc);
+
+    c.keys[7] = true;
+    try c.step();
+    try std.testing.expectEqual(0x200, c.pc);
+
+    c.keys[7] = false;
+    try c.step();
+    try std.testing.expectEqual(7, c.v[0]);
+    try std.testing.expectEqual(0x202, c.pc);
+}
+
+test "addresses wrap from 0xFFF to 0x000" {
+    // V0..V2 = 1, 2, 3, I = 0xFFE, then FX55 stores across the end of memory.
+    var c = try machineWith(&.{ 0x60, 1, 0x61, 2, 0x62, 3, 0xAF, 0xFE, 0xF2, 0x55 });
+    try runSteps(&c, 5);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, c.memory[0xFFE..]);
+    try std.testing.expectEqual(3, c.memory[0x000]);
+    try std.testing.expectEqual(0x001, c.i);
+
+    // An instruction at 0xFFF has its second byte at 0x000.
+    c.pc = 0xFFF;
+    c.memory[0xFFF] = 0x6B;
+    c.memory[0x000] = 0x07;
+    try c.step();
+    try std.testing.expectEqual(7, c.v[0xB]);
+    try std.testing.expectEqual(0x001, c.pc);
 }

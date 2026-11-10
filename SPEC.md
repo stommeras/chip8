@@ -30,6 +30,7 @@ The cores follow the original COSMAC VIP:
 - `8XY6` and `8XYE` shift VY and store the result in VX
 - `FX55` and `FX65` leave I incremented by X + 1
 - `BNNN` jumps to NNN + V0
+- `FX0A` waits until a key is pressed **and released**, then stores that key in VX
 - `DXYN` clips sprites at the screen edge instead of wrapping, and ends the current `step` call so the host can draw. This is the "display wait" quirk
 
 The quirks test in the Timendus chip8-test-suite checks all of these.
