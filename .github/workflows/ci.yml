@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - uses: oven-sh/setup-bun@v2
+      # rust-toolchain.toml makes rustup install the WASM target, rustfmt and clippy.
+      - run: cd zig && zig build test
+      - run: cd rust && cargo test
+      - run: bun run build:zig
+      - run: bun run build:rust
+      - run: bun run roms
+      - run: bun run diff
