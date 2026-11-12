@@ -1,8 +1,18 @@
 import { Glob } from "bun";
 
-const masks = [0b11111, 0, ...[0, 1, 2, 3, 4].map((bit) => 0b11111 ^ (1 << bit))];
+const VIP = 0b11111;
+const masks = [VIP, 0, ...[0, 1, 2, 3, 4].map((bit) => VIP ^ (1 << bit))];
 // 5-quirks waits at a menu until key 1 is pressed.
 const scripts = { "5-quirks": { frames: 1500, press: 300, release: 310 } };
+
+// Hashes of the final screen of each test ROM under the VIP quirks, when it shows every test passed.
+const expected = {
+  "1-chip8-logo": "aec99a55453e7002",
+  "2-ibm-logo": "b12be07c247d2a94",
+  "3-corax+": "f7accf00a65c264f",
+  "4-flags": "c9b71cf8aa770baf",
+  "5-quirks": "f8ab85a05e8e56bb",
+};
 
 async function load(path) {
   if (!(await Bun.file(path).exists())) throw new Error(`${path} is missing, run bun run build:zig and bun run build:rust`);
@@ -39,6 +49,13 @@ for (const path of roms) for (const quirks of masks) {
       console.error(`${name}: frame ${f}, the cores disagree on whether the machine stopped`);
       process.exit(1);
     }
+  }
+  const screen = new Uint8Array(cores[0].memory.buffer, cores[0].framebuffer_ptr(), 64 * 32);
+  const hash = new Bun.CryptoHasher("sha256").update(screen).digest("hex").slice(0, 16);
+  if (quirks === VIP && romName in expected && hash !== expected[romName]) {
+    console.error(`${name}: the final screen is ${hash}, expected ${expected[romName]}`);
+    for (let y = 0; y < 32; y++) console.error([...screen.slice(y * 64, y * 64 + 64)].map((p) => (p ? "#" : ".")).join(""));
+    process.exit(1);
   }
   console.log(`${name}: ${frames} frames match`);
 }

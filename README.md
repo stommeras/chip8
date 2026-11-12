@@ -25,7 +25,7 @@ On the page, the keys 1 2 3 4 / Q W E R / A S D F / Z X C V map to the CHIP-8 ke
 (cd rust && cargo test)
 ```
 
-`bun run diff` runs every ROM in `roms/` through both cores with the same seed and key presses, once with each quirks setting. It exits with an error at the first frame where the framebuffers differ. Build both cores and fetch the ROMs first.
+`bun run diff` runs every ROM in `roms/` through both cores with the same seed and key presses, once with each quirks setting. It exits with an error at the first frame where the framebuffers differ. It also hashes the final screen of each Timendus test ROM under the VIP quirks and compares it with the hash stored in `diff.js`. Those hashes come from screens where every test shows a tick, so a changed hash means a test now fails or the ROM changed. Build both cores and fetch the ROMs first.
 
 See `SPEC.md` for the interface both cores implement.
 
