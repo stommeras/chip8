@@ -16,9 +16,13 @@ export fn rom_ptr() u32 {
     return offset(&rom_buffer);
 }
 
+fn quirksFromBits(bits: u32) chip8.Quirks {
+    return @bitCast(@as(u8, @as(u6, @truncate(bits))));
+}
+
 export fn load_rom(len: u32, seed: u32, quirks: u32) u32 {
     if (len > rom_capacity) return 1;
-    machine.quirks = @bitCast(@as(u8, @as(u6, @truncate(quirks))));
+    machine.quirks = quirksFromBits(quirks);
     machine.loadRom(rom_buffer[0..len], seed) catch unreachable;
     stopped = false;
     return 0;
@@ -62,7 +66,6 @@ export fn is_stopped() u32 {
 
 const vip_bits: u32 = @as(u8, @bitCast(chip8.Quirks.vip));
 const schip_bits: u32 = @as(u8, @bitCast(chip8.Quirks.schip));
-const octo_bits: u32 = @as(u8, @bitCast(chip8.Quirks.octo));
 
 fn load(rom: []const u8) !void {
     @memcpy(rom_buffer[0..rom.len], rom);
@@ -111,9 +114,9 @@ test "load_rom sets the quirks from the low six bits" {
 }
 
 test "the presets have the values SPEC.md gives them" {
-    try std.testing.expectEqual(63, vip_bits);
-    try std.testing.expectEqual(14, octo_bits);
-    try std.testing.expectEqual(32, schip_bits);
+    try std.testing.expectEqual(chip8.Quirks.vip, quirksFromBits(63));
+    try std.testing.expectEqual(chip8.Quirks.octo, quirksFromBits(14));
+    try std.testing.expectEqual(chip8.Quirks.schip, quirksFromBits(32));
 }
 
 test "an error stops the machine until the next load_rom" {

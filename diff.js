@@ -2,7 +2,8 @@ import { Glob } from "bun";
 
 const VIP = 0b111111;
 const OCTO = 0b001110;
-const masks = [VIP, OCTO, 0, ...[0, 1, 2, 3, 4, 5].map((bit) => VIP ^ (1 << bit))];
+const SCHIP = 0b100000;
+const masks = [VIP, OCTO, SCHIP, 0, ...[0, 1, 2, 3, 4, 5].map((bit) => VIP ^ (1 << bit))];
 // 5-quirks waits at a menu until key 1 is pressed.
 const scripts = { "5-quirks": { frames: 1500, press: 300, release: 310 } };
 
