@@ -3,40 +3,36 @@
     "file": "br8kout.ch8",
     "title": "Br8kout",
     "author": "SharpenedSpoon",
-    "year": 2014,
     "license": "CC0-1.0",
     "source": "https://github.com/JohnEarnest/chip8Archive/blob/761e3ffc63f43e6a849e80714122feff2afca208/roms/br8kout.ch8",
     "quirks": 14,
     "steps": 7,
-    "howto": "A and D slide the paddle. Clear the bricks without letting the ball past you."
+    "howto": "Keys A and D slide the paddle. Clear the bricks without letting the ball past you."
   },
   {
     "file": "chipquarium.ch8",
     "title": "Chipquarium",
     "author": "mattmik",
-    "year": 2016,
     "license": "CC0-1.0",
     "source": "https://github.com/JohnEarnest/chip8Archive/blob/761e3ffc63f43e6a849e80714122feff2afca208/roms/chipquarium.ch8",
     "quirks": 63,
     "steps": 15,
-    "howto": "F shows how hungry and how happy the fish are."
+    "howto": "A fish tank to watch rather than a game to win. Key F brings up how hungry and how happy the fish are."
   },
   {
     "file": "flightrunner.ch8",
     "title": "Flight Runner",
     "author": "TodPunk",
-    "year": 2014,
     "license": "CC0-1.0",
     "source": "https://github.com/JohnEarnest/chip8Archive/blob/761e3ffc63f43e6a849e80714122feff2afca208/roms/flightrunner.ch8",
     "quirks": 14,
     "steps": 15,
-    "howto": "A and D steer left and right."
+    "howto": "Keys A and D steer left and right."
   },
   {
     "file": "mastermind.ch8",
     "title": "Mastermind",
     "author": "WilliamDonnelly",
-    "year": 2015,
     "license": "CC0-1.0",
     "source": "https://github.com/JohnEarnest/chip8Archive/blob/761e3ffc63f43e6a849e80714122feff2afca208/roms/mastermind.ch8",
     "quirks": 14,
@@ -46,62 +42,56 @@
     "file": "outlaw.ch8",
     "title": "Outlaw",
     "author": "JohnEarnest",
-    "year": 2014,
     "license": "CC0-1.0",
     "source": "https://github.com/JohnEarnest/chip8Archive/blob/761e3ffc63f43e6a849e80714122feff2afca208/roms/outlaw.ch8",
     "quirks": 14,
     "steps": 15,
-    "howto": "W, A, S and D move your gunman, and E fires."
+    "howto": "Keys W A S D move your gunman, key E fires a shot. A duel with the outlaw across the screen."
   },
   {
     "file": "snek.ch8",
     "title": "Snek",
     "author": "JohnEarnest",
-    "year": 2021,
     "license": "CC0-1.0",
     "source": "https://github.com/JohnEarnest/chip8Archive/blob/761e3ffc63f43e6a849e80714122feff2afca208/roms/snek.ch8",
     "quirks": 14,
     "steps": 1000,
-    "howto": "W, A, S and D steer the snake."
+    "howto": "Keys W A S D steer the snake up, left, down and right. Minimalist Snake, in sixty five bytes."
   },
   {
     "file": "spacejam.ch8",
     "title": "Spacejam!",
     "author": "WilliamDonnelly",
-    "year": 2015,
     "license": "CC0-1.0",
     "source": "https://github.com/JohnEarnest/chip8Archive/blob/761e3ffc63f43e6a849e80714122feff2afca208/roms/spacejam.ch8",
     "quirks": 14,
     "steps": 100,
-    "howto": "Any key starts it. W, A, S and D fly the ship through the tunnel."
+    "howto": "Any key starts it. Keys W A S D fly the ship up, left, down and right through the tunnel."
   },
   {
     "file": "superpong.ch8",
     "title": "Super Pong",
     "author": "offstatic",
-    "year": 2021,
     "license": "CC0-1.0",
     "source": "https://github.com/JohnEarnest/chip8Archive/blob/761e3ffc63f43e6a849e80714122feff2afca208/roms/superpong.ch8",
     "quirks": 14,
     "steps": 30,
-    "howto": "E serves the ball. A and D slide the paddle."
+    "howto": "Key E serves the ball. Keys A and D slide the paddle, and the ball must not get past you."
   },
   {
     "file": "tank.ch8",
     "title": "Tank!",
     "author": "Rectus",
-    "year": 2018,
     "license": "CC0-1.0",
     "source": "https://github.com/JohnEarnest/chip8Archive/blob/761e3ffc63f43e6a849e80714122feff2afca208/roms/tank.ch8",
     "quirks": 14,
     "steps": 200,
-    "howto": "A and D change the first number at the top, W and S the second, and F fires. Two players take turns."
+    "howto": "The two numbers at the top are your shot. Keys A and D change the first, keys W and S the second, and key F fires it. A two player artillery game."
   },
   {
     "file": "wdl.ch8",
     "title": "WDL",
     "author": "JohnEarnest",
-    "year": 2022,
     "license": "CC0-1.0",
     "source": "https://github.com/JohnEarnest/chip8Archive/blob/761e3ffc63f43e6a849e80714122feff2afca208/roms/wdl.ch8",
     "quirks": 63,

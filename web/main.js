@@ -31,6 +31,7 @@ let coreName = null;
 let rom = null;
 let romName = null;
 let howto = "";
+let games = [];
 const held = new Set();
 let audio = null;
 let paused = false;
@@ -142,8 +143,6 @@ function frame(now) {
 }
 
 await loadCore(coreSelect.value);
-const games = await fetch("games/games.json").then((r) => r.json()).catch(() => []);
-for (const [i, game] of games.entries()) gameSelect.add(new Option(`${game.title} (${game.author})`, i));
 romInput.disabled = false;
 requestAnimationFrame(frame);
 
@@ -166,22 +165,28 @@ romInput.addEventListener("change", async () => {
 });
 
 gameSelect.addEventListener("change", async () => {
-  const game = games[gameSelect.value];
+  gameSelect.blur();
+  const game = games.find((g) => g.file === gameSelect.value);
   if (!game) return;
-  const response = await fetch(`games/${game.file}`);
-  if (!response.ok) {
-    status.textContent = `Could not load ${game.file} (${response.status}).`;
+  startAudio();
+  let bytes;
+  try {
+    const response = await fetch(`games/${game.file}`);
+    if (!response.ok) throw new Error(`${response.status}`);
+    bytes = new Uint8Array(await response.arrayBuffer());
+  } catch (error) {
+    status.textContent = `Could not load ${game.file} (${error.message}).`;
+    gameSelect.value = "";
     return;
   }
-  rom = new Uint8Array(await response.arrayBuffer());
+  if (gameSelect.value !== game.file) return;
+  rom = bytes;
   romName = game.title;
   howto = game.howto ?? "";
   quirksSelect.value = game.quirks;
   speedInput.value = game.steps;
   speedInput.dispatchEvent(new Event("change"));
-  startAudio();
   startRom();
-  gameSelect.blur();
 });
 
 speedInput.addEventListener("change", () => {
@@ -232,3 +237,11 @@ addEventListener("blur", () => {
   for (const key of held) core.key_up(key);
   held.clear();
 });
+
+games = await fetch("games/games.json")
+  .then((r) => r.json())
+  .catch(() => {
+    status.textContent = "Could not load the game list. Use the ROM file chooser instead.";
+    return [];
+  });
+for (const game of games) gameSelect.add(new Option(`${game.title} (${game.author})`, game.file));

@@ -6,17 +6,17 @@ const SCHIP = 0b100000;
 const masks = [VIP, OCTO, SCHIP, 0, ...[0, 1, 2, 3, 4, 5].map((bit) => VIP ^ (1 << bit))];
 
 // 5-quirks waits at a menu until key 1 is pressed.
-const pressOne = (f, c) => {
-  if (f === 300) c.key_down(1);
-  if (f === 310) c.key_up(1);
+const pressOne = (frame, core) => {
+  if (frame === 300) core.key_down(1);
+  if (frame === 310) core.key_up(1);
 };
 const scripts = { "5-quirks": { frames: 1500, keys: pressOne } };
 
 // Games get a different key every 40 frames, so they get past their title screens.
-const cycleKeys = (f, c) => {
-  const key = Math.floor(f / 40) % 16;
-  if (f % 40 === 0) c.key_down(key);
-  if (f % 40 === 5) c.key_up(key);
+const cycleKeys = (frame, core) => {
+  const key = Math.floor(frame / 40) % 16;
+  if (frame % 40 === 0) core.key_down(key);
+  if (frame % 40 === 5) core.key_up(key);
 };
 
 const screenHashes = {
@@ -64,13 +64,13 @@ async function lockstep(name, path, quirks, { frames = 300, steps = 11, keys = (
       process.exit(1);
     }
   }
-  console.log(`${name}: ${frames} frames match`);
 }
 
 for (const path of roms) for (const quirks of masks) {
   const romName = path.slice(5, -4);
   const name = `${romName} (quirks ${quirks.toString(2).padStart(6, "0")})`;
-  await lockstep(name, path, quirks, scripts[romName] ?? {});
+  const options = scripts[romName] ?? {};
+  await lockstep(name, path, quirks, options);
   const screen = framebuffer(cores[0]);
   const hash = new Bun.CryptoHasher("sha256").update(screen).digest("hex").slice(0, 16);
   if (quirks === VIP && romName in screenHashes && hash !== screenHashes[romName]) {
@@ -78,6 +78,7 @@ for (const path of roms) for (const quirks of masks) {
     for (let y = 0; y < 32; y++) console.error([...screen.slice(y * 64, y * 64 + 64)].map((p) => (p ? "#" : ".")).join(""));
     process.exit(1);
   }
+  console.log(`${name}: ${options.frames ?? 300} frames match`);
 }
 
 for (const game of await Bun.file("web/games/games.json").json()) {
@@ -86,4 +87,5 @@ for (const game of await Bun.file("web/games/games.json").json()) {
     console.error(`${game.title}: the machine stopped on an unknown opcode or a bad call`);
     process.exit(1);
   }
+  console.log(`${game.title}: 900 frames match`);
 }
