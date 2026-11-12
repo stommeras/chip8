@@ -632,10 +632,10 @@ test "CXNN gives the same numbers for the same seed" {
 }
 
 test "CXNN takes the low byte of each Xoshiro256 output" {
-    // The first two xoshiro256++ outputs for seed 0 are 0x53175d61490b23df and 0x61da6f3dc380d507.
     var c = try machineWith(&.{ 0xC0, 0xFF, 0xC1, 0xFF });
     try runSteps(&c, 2);
-    try std.testing.expectEqualSlices(u8, &.{ 0xDF, 0x07 }, c.v[0..2]);
+    const seed_0_outputs = [2]u64{ 0x53175d61490b23df, 0x61da6f3dc380d507 };
+    try std.testing.expectEqualSlices(u8, &.{ @truncate(seed_0_outputs[0]), @truncate(seed_0_outputs[1]) }, c.v[0..2]);
 }
 
 // Input

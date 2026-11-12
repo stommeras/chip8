@@ -25,7 +25,6 @@ const FONT: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 ];
 
-/// Addresses are 12 bits. Every address write masks with this, so addresses wrap at 0xFFF.
 const ADDRESS_MASK: u16 = 0xFFF;
 
 #[derive(Debug, PartialEq)]
@@ -786,10 +785,10 @@ mod tests {
 
     #[test]
     fn cxnn_takes_the_low_byte_of_each_xoshiro256_output() {
-        // The first two xoshiro256++ outputs for seed 0 are 0x53175d61490b23df and 0x61da6f3dc380d507.
         let mut c = machine_with(&[0xC0, 0xFF, 0xC1, 0xFF]);
         run_steps(&mut c, 2);
-        assert_eq!(c.v[..2], [0xDF, 0x07]);
+        let seed_0_outputs: [u64; 2] = [0x53175d61490b23df, 0x61da6f3dc380d507];
+        assert_eq!(c.v[..2], seed_0_outputs.map(|output| output as u8));
     }
 
     // Input
