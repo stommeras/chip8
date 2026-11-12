@@ -136,6 +136,7 @@ function frame(now) {
   }
   draw();
   if (audio) audio.gain.gain.value = core.sound_on() ? 0.05 : 0;
+  if (core.is_stopped()) status.textContent = `${romName} stopped: it hit an unknown opcode or broke the call stack.`;
 }
 
 await loadCore(coreSelect.value);

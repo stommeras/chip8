@@ -35,6 +35,10 @@ for (const path of roms) for (const quirks of masks) {
       console.error(`${name}: frame ${f} differs, first at x=${i % 64} y=${i >> 6} (zig ${a[i]}, rust ${b[i]})`);
       process.exit(1);
     }
+    if (cores[0].is_stopped() !== cores[1].is_stopped()) {
+      console.error(`${name}: frame ${f}, the cores disagree on whether the machine stopped`);
+      process.exit(1);
+    }
   }
   console.log(`${name}: ${frames} frames match`);
 }

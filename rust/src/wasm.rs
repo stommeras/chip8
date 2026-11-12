@@ -92,6 +92,11 @@ pub extern "C" fn sound_on() -> u32 {
     with_state(|s| (s.machine.sound_timer > 0).into())
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn is_stopped() -> u32 {
+    with_state(|s| s.stopped.into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,14 +159,15 @@ mod tests {
     #[test]
     fn an_error_stops_the_machine_until_the_next_load_rom() {
         load(&[0x01, 0x23]);
+        assert_eq!(is_stopped(), 0);
         step(1);
-        assert!(with_state(|s| s.stopped));
+        assert_eq!(is_stopped(), 1);
         let pc = with_state(|s| s.machine.pc);
         step(1);
         assert_eq!(with_state(|s| s.machine.pc), pc);
 
         load(&[0x61, 0x01]);
-        assert!(!with_state(|s| s.stopped));
+        assert_eq!(is_stopped(), 0);
         step(1);
         assert_eq!(with_state(|s| s.machine.v[1]), 1);
     }

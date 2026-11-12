@@ -56,6 +56,10 @@ export fn sound_on() u32 {
     return @intFromBool(machine.sound_timer > 0);
 }
 
+export fn is_stopped() u32 {
+    return @intFromBool(stopped);
+}
+
 const vip_bits: u32 = @as(u8, @bitCast(chip8.Quirks.vip));
 const schip_bits: u32 = @as(u8, @bitCast(chip8.Quirks.schip));
 
@@ -107,14 +111,15 @@ test "load_rom sets the quirks from the low five bits" {
 
 test "an error stops the machine until the next load_rom" {
     try load(&.{ 0x01, 0x23 });
+    try std.testing.expectEqual(0, is_stopped());
     step(1);
-    try std.testing.expect(stopped);
+    try std.testing.expectEqual(1, is_stopped());
     const pc = machine.pc;
     step(1);
     try std.testing.expectEqual(pc, machine.pc);
 
     try load(&.{ 0x61, 0x01 });
-    try std.testing.expect(!stopped);
+    try std.testing.expectEqual(0, is_stopped());
     step(1);
     try std.testing.expectEqual(1, machine.v[1]);
 }

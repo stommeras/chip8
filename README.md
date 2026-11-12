@@ -14,7 +14,7 @@ bun run dev
 
 Run `bun run roms` once to fetch the test ROMs, then pick one from `roms/` with the file chooser on the page.
 
-On the page, the keys 1 2 3 4 / Q W E R / A S D F / Z X C V map to the CHIP-8 keypad, and P pauses. The "Quirks" menu switches between COSMAC VIP and SUPER-CHIP behavior and restarts the ROM. The "Steps per frame" field sets the speed (11 by default, about 660 instructions per second). Under the screen, the page shows the size of the loaded `.wasm` file and the average time the core spends on one frame. The browser rounds timers, so only the average over a second means anything.
+On the page, the keys 1 2 3 4 / Q W E R / A S D F / Z X C V map to the CHIP-8 keypad, and P pauses. The "Quirks" menu switches between COSMAC VIP and SUPER-CHIP quirks. Neither core runs the SUPER-CHIP instructions, such as the 128x64 screen, so a ROM that needs them stops and the page says so and restarts the ROM. The "Steps per frame" field sets the speed (11 by default, about 660 instructions per second). Under the screen, the page shows the size of the loaded `.wasm` file and the average time the core spends on one frame. The browser rounds timers, so only the average over a second means anything.
 
 `cd zig && zig build run -- ../roms/2-ibm-logo.ch8` runs a ROM for 1000 instructions and prints the screen as text. The Rust core has no equivalent.
 

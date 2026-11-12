@@ -11,6 +11,7 @@ Both cores export exactly these functions with these names. All values are `u32`
 | `key_down(k)`, `key_up(k)` | Presses or releases key `k`, from 0x0 to 0xF |
 | `framebuffer_ptr() -> u32` | Returns a pointer to 64×32 bytes, row by row, 0 for off and 1 for on |
 | `sound_on() -> u32` | Returns 1 while the sound timer is above 0 |
+| `is_stopped() -> u32` | Returns 1 after an error has stopped the machine (see Errors), until the next `load_rom` |
 
 The cores import nothing from the host.
 
