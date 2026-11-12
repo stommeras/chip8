@@ -1,5 +1,7 @@
 //! The CHIP-8 machine: memory, registers, screen, and the instructions that change them.
 
+mod wasm;
+
 pub const MEMORY_SIZE: usize = 4096;
 pub const PROGRAM_START: usize = 0x200;
 pub const FONT_START: usize = 0x50;
