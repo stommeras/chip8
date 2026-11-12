@@ -16,8 +16,9 @@ export fn rom_ptr() u32 {
     return offset(&rom_buffer);
 }
 
-export fn load_rom(len: u32, seed: u32) u32 {
+export fn load_rom(len: u32, seed: u32, quirks: u32) u32 {
     if (len > rom_capacity) return 1;
+    machine.quirks = @bitCast(@as(u8, @as(u5, @truncate(quirks))));
     machine.loadRom(rom_buffer[0..len], seed) catch unreachable;
     stopped = false;
     return 0;
@@ -31,7 +32,7 @@ export fn step(n: u32) void {
             stopped = true;
             return;
         };
-        if (draws) return;
+        if (draws and machine.quirks.display_wait) return;
     }
 }
 
@@ -55,14 +56,17 @@ export fn sound_on() u32 {
     return @intFromBool(machine.sound_timer > 0);
 }
 
+const vip: u32 = @as(u8, @bitCast(chip8.Quirks.vip));
+const schip: u32 = @as(u8, @bitCast(chip8.Quirks.schip));
+
 fn load(rom: []const u8) !void {
     @memcpy(rom_buffer[0..rom.len], rom);
-    try std.testing.expectEqual(0, load_rom(@intCast(rom.len), 0));
+    try std.testing.expectEqual(0, load_rom(@intCast(rom.len), 0, vip));
 }
 
 test "load_rom rejects a ROM that is too long and accepts one that just fits" {
-    try std.testing.expectEqual(1, load_rom(rom_capacity + 1, 0));
-    try std.testing.expectEqual(0, load_rom(rom_capacity, 0));
+    try std.testing.expectEqual(1, load_rom(rom_capacity + 1, 0, vip));
+    try std.testing.expectEqual(0, load_rom(rom_capacity, 0, vip));
 }
 
 test "step runs exactly n instructions" {
@@ -79,6 +83,20 @@ test "step returns right after DXYN" {
     try std.testing.expectEqual(0, machine.v[1]);
     step(10);
     try std.testing.expectEqual(1, machine.v[1]);
+}
+
+test "step runs on after DXYN when display_wait is off" {
+    try load(&.{ 0xA0, 0x50, 0xD0, 0x05, 0x61, 0x01 });
+    try std.testing.expectEqual(0, load_rom(6, 0, schip));
+    step(10);
+    try std.testing.expectEqual(1, machine.v[1]);
+}
+
+test "load_rom sets the quirks from the low five bits" {
+    try std.testing.expectEqual(0, load_rom(0, 0, schip | 0xE0));
+    try std.testing.expectEqual(chip8.Quirks.schip, machine.quirks);
+    try std.testing.expectEqual(0, load_rom(0, 0, vip));
+    try std.testing.expectEqual(chip8.Quirks.vip, machine.quirks);
 }
 
 test "an error stops the machine until the next load_rom" {

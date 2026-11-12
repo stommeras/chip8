@@ -26,6 +26,25 @@ const font = [80]u8{
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 };
 
+/// Behaviors that differ between CHIP-8 machines (SPEC.md). The bit order is the order of the fields.
+pub const Quirks = packed struct(u8) {
+    vf_reset: bool = true,
+    shift_uses_vy: bool = true,
+    increment_i: bool = true,
+    jump_uses_v0: bool = true,
+    display_wait: bool = true,
+    _: u3 = 0,
+
+    pub const vip: Quirks = .{};
+    pub const schip: Quirks = .{
+        .vf_reset = false,
+        .shift_uses_vy = false,
+        .increment_i = false,
+        .jump_uses_v0 = false,
+        .display_wait = false,
+    };
+};
+
 pub const Chip8 = struct {
     memory: [memory_size]u8 = @splat(0),
     v: [16]u8 = @splat(0),
@@ -39,6 +58,8 @@ pub const Chip8 = struct {
     display: [width * height]u8 = @splat(0),
     keys: [16]bool = @splat(false),
     rng: std.Random.Xoshiro256,
+    /// Survives `loadRom`.
+    quirks: Quirks = .vip,
     /// While FX0A waits, the key that went down. FX0A finishes when it comes back up.
     held_key: ?u4 = null,
 
@@ -48,11 +69,13 @@ pub const Chip8 = struct {
         return c;
     }
 
-    /// Resets the machine and copies `rom` to 0x200. On error the machine is left as it was.
+    /// Resets the machine, except for its quirks, and copies `rom` to 0x200. On error the machine is left as it was.
     /// `rom` must not point into the machine's own memory, since the reset clears it first.
     pub fn loadRom(self: *Chip8, rom: []const u8, seed: u64) error{RomTooLarge}!void {
         if (rom.len > memory_size - program_start) return error.RomTooLarge;
+        const quirks = self.quirks;
         self.* = .init(seed);
+        self.quirks = quirks;
         @memcpy(self.memory[program_start..][0..rom.len], rom);
     }
 
@@ -102,18 +125,17 @@ pub const Chip8 = struct {
             0x7 => self.v[x] +%= nn,
             0x8 => switch (n) {
                 0x0 => self.v[x] = self.v[y],
-                // COSMAC VIP quirk: the logic ops reset VF (SPEC.md).
                 0x1 => {
                     self.v[x] |= self.v[y];
-                    self.v[0xF] = 0;
+                    if (self.quirks.vf_reset) self.v[0xF] = 0;
                 },
                 0x2 => {
                     self.v[x] &= self.v[y];
-                    self.v[0xF] = 0;
+                    if (self.quirks.vf_reset) self.v[0xF] = 0;
                 },
                 0x3 => {
                     self.v[x] ^= self.v[y];
-                    self.v[0xF] = 0;
+                    if (self.quirks.vf_reset) self.v[0xF] = 0;
                 },
                 0x4 => {
                     const sum, const carry = @addWithOverflow(self.v[x], self.v[y]);
@@ -126,8 +148,9 @@ pub const Chip8 = struct {
                     self.v[0xF] = 1 - borrow;
                 },
                 0x6 => {
-                    const shifted_out = self.v[y] & 1;
-                    self.v[x] = self.v[y] >> 1;
+                    const source = self.shiftSource(x, y);
+                    const shifted_out = source & 1;
+                    self.v[x] = source >> 1;
                     self.v[0xF] = shifted_out;
                 },
                 0x7 => {
@@ -136,7 +159,7 @@ pub const Chip8 = struct {
                     self.v[0xF] = 1 - borrow;
                 },
                 0xE => {
-                    const shifted, const shifted_out = @shlWithOverflow(self.v[y], 1);
+                    const shifted, const shifted_out = @shlWithOverflow(self.shiftSource(x, y), 1);
                     self.v[x] = shifted;
                     self.v[0xF] = shifted_out;
                 },
@@ -144,7 +167,7 @@ pub const Chip8 = struct {
             },
             0x9 => if (self.v[x] != self.v[y]) self.skip(),
             0xA => self.i = nnn,
-            0xB => self.pc = nnn +% self.v[0],
+            0xB => self.pc = nnn +% self.v[if (self.quirks.jump_uses_v0) 0 else x],
             0xC => self.v[x] = self.rng.random().int(u8) & nn,
             0xD => self.draw(x, y, n),
             0xE => {
@@ -169,18 +192,29 @@ pub const Chip8 = struct {
                     self.memory[self.i +% 1] = value / 10 % 10;
                     self.memory[self.i +% 2] = value % 10;
                 },
-                // Like the COSMAC VIP, these move I one step per register, so I ends at I + X + 1.
-                0x55 => for (self.v[0 .. @as(usize, x) + 1]) |register| {
-                    self.memory[self.i] = register;
-                    self.i +%= 1;
+                0x55 => {
+                    for (self.v[0 .. @as(usize, x) + 1], 0..) |register, offset| {
+                        self.memory[self.i +% @as(u12, @intCast(offset))] = register;
+                    }
+                    self.advanceI(x);
                 },
-                0x65 => for (self.v[0 .. @as(usize, x) + 1]) |*register| {
-                    register.* = self.memory[self.i];
-                    self.i +%= 1;
+                0x65 => {
+                    for (self.v[0 .. @as(usize, x) + 1], 0..) |*register, offset| {
+                        register.* = self.memory[self.i +% @as(u12, @intCast(offset))];
+                    }
+                    self.advanceI(x);
                 },
                 else => return error.UnknownOpcode,
             },
         }
+    }
+
+    fn shiftSource(self: *const Chip8, x: u4, y: u4) u8 {
+        return self.v[if (self.quirks.shift_uses_vy) y else x];
+    }
+
+    fn advanceI(self: *Chip8, x: u4) void {
+        if (self.quirks.increment_i) self.i +%= @as(u12, x) + 1;
     }
 
     /// FX0A: waits for a key to go down and come back up, then stores it in VX.
@@ -577,6 +611,60 @@ test "FX65 loads V0 through VX from I and moves I past them" {
     try runSteps(&c, 2);
     try std.testing.expectEqualSlices(u8, &.{ 7, 8, 9, 0 }, c.v[0..4]);
     try std.testing.expectEqual(0x303, c.i);
+}
+
+// Quirks
+
+test "with vf_reset off, 8XY1, 8XY2 and 8XY3 leave VF alone" {
+    var c = try machineWith(&.{ 0x6F, 0x01, 0x60, 0x0F, 0x61, 0xF0, 0x80, 0x11, 0x80, 0x12, 0x80, 0x13 });
+    c.quirks.vf_reset = false;
+    try runSteps(&c, 6);
+    try std.testing.expectEqual(1, c.v[0xF]);
+}
+
+test "with shift_uses_vy off, 8XY6 and 8XYE shift VX in place" {
+    var right = try machineWith(&.{ 0x60, 0x03, 0x61, 0x08, 0x80, 0x16 });
+    right.quirks.shift_uses_vy = false;
+    try runSteps(&right, 3);
+    try std.testing.expectEqual(0x01, right.v[0]);
+    try std.testing.expectEqual(1, right.v[0xF]);
+    try std.testing.expectEqual(0x08, right.v[1]);
+
+    var left = try machineWith(&.{ 0x60, 0x81, 0x61, 0x08, 0x80, 0x1E });
+    left.quirks.shift_uses_vy = false;
+    try runSteps(&left, 3);
+    try std.testing.expectEqual(0x02, left.v[0]);
+    try std.testing.expectEqual(1, left.v[0xF]);
+    try std.testing.expectEqual(0x08, left.v[1]);
+}
+
+test "with jump_uses_v0 off, BXNN jumps to XNN plus VX" {
+    var c = try machineWith(&.{ 0x63, 0x08, 0xB3, 0x00 });
+    c.quirks.jump_uses_v0 = false;
+    try runSteps(&c, 2);
+    try std.testing.expectEqual(0x308, c.pc);
+}
+
+test "with increment_i off, FX55 and FX65 leave I alone" {
+    var store = try machineWith(&.{ 0x60, 1, 0x61, 2, 0xA3, 0x00, 0xF1, 0x55 });
+    store.quirks.increment_i = false;
+    try runSteps(&store, 4);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, store.memory[0x300..][0..2]);
+    try std.testing.expectEqual(0x300, store.i);
+
+    var load = try machineWith(&.{ 0xA3, 0x00, 0xF1, 0x65 });
+    load.quirks.increment_i = false;
+    @memcpy(load.memory[0x300..][0..2], &[_]u8{ 7, 8 });
+    try runSteps(&load, 2);
+    try std.testing.expectEqualSlices(u8, &.{ 7, 8 }, load.v[0..2]);
+    try std.testing.expectEqual(0x300, load.i);
+}
+
+test "loadRom keeps the quirks" {
+    var c = Chip8.init(0);
+    c.quirks = .schip;
+    try c.loadRom(&.{}, 0);
+    try std.testing.expectEqual(Quirks.schip, c.quirks);
 }
 
 // Timers and random

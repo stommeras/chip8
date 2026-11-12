@@ -5,7 +5,7 @@ Both cores export exactly these functions with these names. All values are `u32`
 | Export | Does |
 | --- | --- |
 | `rom_ptr() -> u32` | Returns a pointer to a 3584-byte buffer. The host writes the ROM here before calling `load_rom` |
-| `load_rom(len, seed) -> u32` | Resets the machine, copies `len` bytes from the ROM buffer to 0x200, and seeds the random generator used by `CXNN`. Returns 0 on success, 1 if `len` is over 3584 |
+| `load_rom(len, seed, quirks) -> u32` | Resets the machine, copies `len` bytes from the ROM buffer to 0x200, seeds the random generator used by `CXNN`, and sets the quirks (see below). Returns 0 on success, 1 if `len` is over 3584, and then nothing changes |
 | `step(n)` | Runs up to `n` instructions. Returns early after a `DXYN` (see quirks) |
 | `tick_timers()` | Decrements the delay and sound timers. The host calls it 60 times a second |
 | `key_down(k)`, `key_up(k)` | Presses or releases key `k`, from 0x0 to 0xF |
@@ -28,13 +28,21 @@ The host decides the speed. The default is `step(11)` and then `tick_timers()` o
 
 ## Quirks
 
-The cores follow the original COSMAC VIP:
+`load_rom` takes a bitmask. A set bit gives the COSMAC VIP behavior and a clear bit gives the CHIP-48 and SUPER-CHIP behavior. Bits above bit 4 are ignored.
 
-- `8XY1`, `8XY2` and `8XY3` reset VF to 0
-- `8XY6` and `8XYE` shift VY and store the result in VX
-- `FX55` and `FX65` leave I incremented by X + 1
-- `BNNN` jumps to NNN + V0
+| Bit | Name | Set (VIP) | Clear (CHIP-48, SUPER-CHIP) |
+| --- | --- | --- | --- |
+| 0 | `vf_reset` | `8XY1`, `8XY2` and `8XY3` reset VF to 0 | VF is left alone |
+| 1 | `shift_uses_vy` | `8XY6` and `8XYE` shift VY and store the result in VX | They shift VX in place |
+| 2 | `increment_i` | `FX55` and `FX65` leave I incremented by X + 1 | I is left alone |
+| 3 | `jump_uses_v0` | `BNNN` jumps to NNN + V0 | `BXNN` jumps to XNN + VX |
+| 4 | `display_wait` | `DXYN` ends the current `step` call so the host can draw | `step` carries on |
+
+The VIP value is 31 and the CHIP-48 and SUPER-CHIP value is 0. CHIP-48 itself raises I by X after `FX55` and `FX65`, and the cores don't model that. Both cores follow SUPER-CHIP there.
+
+These behave the same under every setting:
+
 - `FX0A` waits until a key is pressed **and released**, then stores that key in VX
-- `DXYN` clips sprites at the screen edge instead of wrapping, and ends the current `step` call so the host can draw. This is the "display wait" quirk
+- `DXYN` clips sprites at the screen edge instead of wrapping
 
-The quirks test in the Timendus chip8-test-suite checks all of these.
+The quirks test in the Timendus chip8-test-suite checks all of these under the VIP value.

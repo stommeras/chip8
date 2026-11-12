@@ -1,6 +1,7 @@
 import { Glob } from "bun";
 
 // 5-quirks waits at a menu until key 1 is pressed.
+const presets = { vip: 0b11111, schip: 0 };
 const scripts = { "5-quirks": { frames: 1500, press: 300, release: 310 } };
 
 async function load(path) {
@@ -12,13 +13,13 @@ const cores = [await load("web/zig.wasm"), await load("web/rust.wasm")];
 const roms = [...new Glob("roms/*.ch8").scanSync()].sort();
 if (!roms.length) throw new Error("roms/ is empty, run bun run roms");
 
-for (const path of roms) {
-  const name = path.slice(5, -4);
-  const { frames = 300, press, release } = scripts[name] ?? {};
+for (const [path, [preset, quirks]] of roms.flatMap((r) => Object.entries(presets).map((p) => [r, p]))) {
+  const name = `${path.slice(5, -4)} (${preset})`;
+  const { frames = 300, press, release } = scripts[path.slice(5, -4)] ?? {};
   const rom = new Uint8Array(await Bun.file(path).arrayBuffer());
   for (const c of cores) {
     new Uint8Array(c.memory.buffer, c.rom_ptr(), rom.length).set(rom);
-    if (c.load_rom(rom.length, 1) !== 0) throw new Error(`${name}: load_rom failed`);
+    if (c.load_rom(rom.length, 1, quirks) !== 0) throw new Error(`${name}: load_rom failed`);
   }
   for (let f = 0; f < frames; f++) {
     for (const c of cores) {
