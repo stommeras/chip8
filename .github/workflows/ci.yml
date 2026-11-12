@@ -5,6 +5,13 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -14,8 +21,8 @@ jobs:
         with:
           version: 0.17.0
       - uses: oven-sh/setup-bun@v2
-      # rust-toolchain.toml makes rustup install the WASM target, rustfmt and clippy.
       - run: cd zig && zig build test
+      - run: cd rust && rustup toolchain install
       - run: cd rust && cargo test
       - run: bun run build:zig
       - run: bun run build:rust
