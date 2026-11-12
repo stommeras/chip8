@@ -1,7 +1,9 @@
 import { Glob } from "bun";
 
-const VIP = 0b11111;
-const masks = [VIP, 0, ...[0, 1, 2, 3, 4].map((bit) => VIP ^ (1 << bit))];
+const VIP = 0b111111;
+const OCTO = 0b001110;
+const SCHIP = 0b100000;
+const masks = [VIP, OCTO, SCHIP, 0, ...[0, 1, 2, 3, 4, 5].map((bit) => VIP ^ (1 << bit))];
 // 5-quirks waits at a menu until key 1 is pressed.
 const scripts = { "5-quirks": { frames: 1500, press: 300, release: 310 } };
 
@@ -29,7 +31,7 @@ const framebuffer = (core) => new Uint8Array(core.memory.buffer, core.framebuffe
 
 for (const path of roms) for (const quirks of masks) {
   const romName = path.slice(5, -4);
-  const name = `${romName} (quirks ${quirks.toString(2).padStart(5, "0")})`;
+  const name = `${romName} (quirks ${quirks.toString(2).padStart(6, "0")})`;
   const { frames = 300, press, release } = scripts[romName] ?? {};
   const rom = new Uint8Array(await Bun.file(path).arrayBuffer());
   for (const c of cores) {

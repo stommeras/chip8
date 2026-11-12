@@ -29,21 +29,27 @@ The host decides the speed. The default is `step(11)` and then `tick_timers()` o
 
 ## Quirks
 
-`load_rom` takes a bitmask. A set bit gives the COSMAC VIP behavior and a clear bit gives the SUPER-CHIP behavior. Bits above bit 4 are ignored.
+`load_rom` takes a bitmask. A set bit gives the COSMAC VIP behavior. Bits above bit 5 are ignored.
 
-| Bit | Name | Set (VIP) | Clear (SUPER-CHIP) |
+| Bit | Name | Set (VIP) | Clear |
 | --- | --- | --- | --- |
 | 0 | `vf_reset` | `8XY1`, `8XY2` and `8XY3` reset VF to 0 | VF is left alone |
 | 1 | `shift_uses_vy` | `8XY6` and `8XYE` shift VY and store the result in VX | They shift VX in place |
 | 2 | `increment_i` | `FX55` and `FX65` leave I incremented by X + 1 | I is left alone |
 | 3 | `jump_uses_v0` | `BNNN` jumps to NNN + V0 | `BXNN` jumps to XNN + VX |
 | 4 | `display_wait` | `DXYN` ends the current `step` call so the host can draw | `step` carries on |
+| 5 | `clip` | `DXYN` clips sprites at the screen edge | Sprites wrap around to the opposite edge |
 
-The VIP value is 31 and the SUPER-CHIP value is 0. CHIP-48 matches SUPER-CHIP except that it raises I by X after `FX55` and `FX65`, which the cores don't model.
+Presets:
 
-These behave the same under every setting:
+| Preset | Value | Bits set |
+| --- | --- | --- |
+| COSMAC VIP | 63 | all |
+| Octo | 14 | 1, 2 and 3. This is what most of the CHIP-8 programs in the chip8Archive ask for |
+| SUPER-CHIP | 32 | 5 only |
 
-- `FX0A` waits until a key is pressed **and released**, then stores that key in VX
-- `DXYN` clips sprites at the screen edge instead of wrapping
+The SUPER-CHIP value covers the quirks only. The cores don't run SUPER-CHIP instructions. CHIP-48 matches SUPER-CHIP except that it raises I by X after `FX55` and `FX65`, which the cores don't model.
+
+`FX0A` waits until a key is pressed **and released**, then stores that key in VX, under every setting.
 
 The quirks test in the Timendus chip8-test-suite checks all of these under the VIP value.

@@ -101,8 +101,8 @@ pub extern "C" fn is_stopped() -> u32 {
 mod tests {
     use super::*;
 
-    const VIP_BITS: u32 = 0b11111;
-    const SCHIP_BITS: u32 = 0;
+    const VIP_BITS: u32 = 0b111111;
+    const SCHIP_BITS: u32 = 0b100000;
 
     fn load(rom: &[u8]) {
         with_state(|s| s.rom_buffer[..rom.len()].copy_from_slice(rom));
@@ -149,8 +149,15 @@ mod tests {
     }
 
     #[test]
-    fn load_rom_sets_the_quirks_from_the_low_five_bits() {
-        assert_eq!(load_rom(0, 0, SCHIP_BITS | 0xE0), 0);
+    fn the_presets_have_the_values_spec_md_gives_them() {
+        assert_eq!(Quirks::from_bits(63), Quirks::VIP);
+        assert_eq!(Quirks::from_bits(14), Quirks::OCTO);
+        assert_eq!(Quirks::from_bits(32), Quirks::SCHIP);
+    }
+
+    #[test]
+    fn load_rom_sets_the_quirks_from_the_low_six_bits() {
+        assert_eq!(load_rom(0, 0, SCHIP_BITS | 0xC0), 0);
         assert_eq!(with_state(|s| s.machine.quirks), Quirks::SCHIP);
         assert_eq!(load_rom(0, 0, VIP_BITS), 0);
         assert_eq!(with_state(|s| s.machine.quirks), Quirks::VIP);
