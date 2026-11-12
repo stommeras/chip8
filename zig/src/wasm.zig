@@ -1,4 +1,3 @@
-//! The WASM exports from SPEC.md. This is the only place that knows about "stopped".
 const std = @import("std");
 
 const chip8 = @import("chip8");
@@ -7,10 +6,8 @@ const rom_capacity = chip8.memory_size - chip8.program_start;
 
 var machine: chip8.Chip8 = .init(0);
 var rom_buffer: [rom_capacity]u8 = @splat(0);
-/// Set when the core returns an error. Cleared by load_rom.
 var stopped = false;
 
-/// Pointers are byte offsets into the module's memory, which is 32-bit.
 fn offset(ptr: anytype) u32 {
     return @intCast(@intFromPtr(ptr));
 }
@@ -21,13 +18,11 @@ export fn rom_ptr() u32 {
 
 export fn load_rom(len: u32, seed: u32) u32 {
     if (len > rom_capacity) return 1;
-    // Can't fail: the length was checked above.
     machine.loadRom(rom_buffer[0..len], seed) catch unreachable;
     stopped = false;
     return 0;
 }
 
-/// Runs up to `n` instructions and returns early after DXYN, so the host can draw.
 export fn step(n: u32) void {
     for (0..n) |_| {
         if (stopped) return;
@@ -78,7 +73,6 @@ test "step runs exactly n instructions" {
 }
 
 test "step returns right after DXYN" {
-    // I = font start, draw 5 rows, V1 = 1
     try load(&.{ 0xA0, 0x50, 0xD0, 0x05, 0x61, 0x01 });
     step(10);
     try std.testing.expectEqual(chip8.program_start + 4, machine.pc);
