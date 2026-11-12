@@ -5,13 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CHIP-8</title>
 <style>
-  body { margin: 0; padding: 16px; background: #111; color: #ddd; font: 16px system-ui, sans-serif; }
+  :root { --fg: #6f6; --dim: #3a3; --bg: #000; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.5 ui-monospace, "Courier New", monospace; }
   main { max-width: 768px; margin: 0 auto; }
-  canvas { display: block; width: 100%; aspect-ratio: 2; image-rendering: pixelated; background: #000; }
+  canvas { display: block; width: 100%; aspect-ratio: 2; image-rendering: pixelated; background: #000; border: 1px solid var(--fg); box-sizing: border-box; }
   #controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
+  select, input, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--dim); border-radius: 0; padding: 2px 6px; }
+  input[type=file] { padding: 0; border: 0; }
+  input[type=file]::file-selector-button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--dim); border-radius: 0; padding: 2px 6px; margin-right: 8px; cursor: pointer; }
+  button { cursor: pointer; }
+  button:hover, input[type=file]::file-selector-button:hover { background: var(--fg); color: var(--bg); }
+  :focus-visible { outline: 1px solid var(--fg); outline-offset: 2px; }
+  :disabled, :disabled::file-selector-button { opacity: .5; cursor: default; }
   #speed { width: 5em; }
   #status { margin-top: 12px; min-height: 1.5em; }
-  #stats { margin-top: 4px; color: #999; font-variant-numeric: tabular-nums; }
+  #status::before { content: "> "; }
+  #stats { margin-top: 4px; color: var(--dim); font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>

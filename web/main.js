@@ -99,7 +99,7 @@ function startAudio() {
 function draw() {
   const framebuffer = new Uint8Array(core.memory.buffer, core.framebuffer_ptr(), WIDTH * HEIGHT);
   for (let i = 0; i < framebuffer.length; i++) {
-    pixels[i] = framebuffer[i] ? 0xFFFFFFFF : 0xFF000000;
+    pixels[i] = framebuffer[i] ? 0xFF66FF66 : 0xFF000000;
   }
   ctx.putImageData(image, 0, 0);
 }
