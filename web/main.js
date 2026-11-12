@@ -33,20 +33,20 @@ let audio = null;
 let paused = false;
 let stepsPerFrame = speedInput.valueAsNumber;
 let coreBytes = 0;
-// Time spent in core.step and core.tick_timers since the last readout.
 let busyMs = 0;
 let busyFrames = 0;
 let statsAt = 0;
 let microsPerFrame = null;
 
 function showStats() {
-  const time = microsPerFrame === null ? "" : `, ${microsPerFrame.toFixed(0)} µs per frame of ${stepsPerFrame} steps`;
+  const time = microsPerFrame === null ? "" : `, ${microsPerFrame.toFixed(0)} µs per frame`;
   stats.textContent = `${coreName}.wasm is ${coreBytes.toLocaleString("en-US")} bytes${time}`;
 }
 
 function resetStats() {
   busyMs = 0;
   busyFrames = 0;
+  statsAt = performance.now();
   microsPerFrame = null;
   showStats();
 }
@@ -113,6 +113,7 @@ function frame(now) {
   if (!rom) return;
   if (paused) {
     behind = JITTER_HEADROOM_MS;
+    statsAt = now;
     if (audio) audio.gain.gain.value = 0;
     return;
   }
@@ -175,7 +176,6 @@ coreSelect.addEventListener("change", async () => {
 });
 
 addEventListener("keydown", (e) => {
-  // Let the speed field take digits.
   if (e.target === speedInput || e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.code === "KeyP") {
     if (!e.repeat) setPaused(!paused);

@@ -21,8 +21,8 @@ On the page, the keys 1 2 3 4 / Q W E R / A S D F / Z X C V map to the CHIP-8 ke
 ## Tests
 
 ```sh
-cd zig && zig build test
-cd rust && cargo test
+(cd zig && zig build test)
+(cd rust && cargo test)
 ```
 
 `bun run diff` runs every ROM in `roms/` through both cores with the same seed and key presses. It exits with an error at the first frame where the framebuffers differ. Build both cores and fetch the ROMs first.
