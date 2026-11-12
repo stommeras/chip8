@@ -376,7 +376,6 @@ test "DXYN clips at the right and bottom edges" {
 }
 
 test "with clip off, DXYN wraps around the right and bottom edges" {
-    // V0 = 62, so x = 62 and y = 30
     var c = try machineWith(&.{ 0x60, 62, 0xA0, 0x50, 0xD0, 0x05 });
     c.quirks.clip = false;
     for (0..3) |_| try c.step();

@@ -526,7 +526,6 @@ mod tests {
 
     #[test]
     fn with_clip_off_dxyn_wraps_around_the_right_and_bottom_edges() {
-        // V0 = 62, so x = 62 and y = 30
         let mut c = machine_with(&[0x60, 62, 0xA0, 0x50, 0xD0, 0x05]);
         c.quirks.clip = false;
         run_steps(&mut c, 3);
