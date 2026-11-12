@@ -61,7 +61,7 @@ Both cores have the same 65 tests: 55 for the CPU and 10 for the WASM exports.
 - It hashes the final screen of each Timendus test ROM under the VIP quirks and compares it with the hash stored in `diff.js`. It fails if one of those ROMs is missing. The stored screens are the logo for the two logo ROMs and a tick for every test on the other three. A changed hash means a core changed what a ROM shows or the ROM itself changed.
 - It runs every game in `web/games/` for 900 frames on both cores with the game's own quirks and speed, pressing a new key every 40 frames, and fails if the cores differ or the machine stops.
 
-Continuous integration runs all of this on every pull request.
+Continuous integration runs both test suites, both builds and `bun run diff` on every pull request.
 
 ## Comparison
 
@@ -71,17 +71,17 @@ Continuous integration runs all of this on every pull request.
 | Source lines, tests excluded | 336 | 502 |
 | Source lines, tests included | 955 | 1,200 |
 | Clean release build | about 2.9 s | about 0.2 s |
-| Instructions per second | about 397 million | about 277 million |
+| Instructions per second | about 159 million | about 114 million |
 
-Measured with Zig 0.17.1 and Rust 1.99.1 on one Linux machine. Rebuild and rerun before quoting any of it.
+These numbers come from Zig 0.17.1 (CI pins 0.17.0) and Rust 1.99.1 on one Linux machine. Rebuild and rerun before quoting any of it.
 
-- **Size** is `ReleaseSmall` for Zig and plain `--release` for Rust, as the build scripts set them.
-- **Source lines** count `root.zig` and `wasm.zig` against `lib.rs` and `wasm.rs` with `wc -l`. "Tests excluded" counts the lines before the first test. `main.zig` is left out because the Rust core has no equivalent.
+- **Build settings.** Both cores are built for size, and the speed row measures those builds. Zig uses `ReleaseSmall`. Rust uses `opt-level = "z"`, LTO, one codegen unit, `panic = "abort"` and `strip` from `rust/Cargo.toml`.
+- **Source lines** count `root.zig` and `wasm.zig` against `lib.rs` and `wasm.rs` with `wc -l`. "Tests excluded" counts `root.zig` up to its test helpers (`machineWith`), `wasm.zig` up to its test constants (`vip_bits`), and `lib.rs` and `wasm.rs` up to `#[cfg(test)]`. `main.zig` is left out because the Rust core has no equivalent.
 - **Build time** is the time of `bun run build:zig` and `bun run build:rust` after deleting `zig/.zig-cache`, `zig/zig-out` and `rust/target`. The Rust crate has no dependencies, while the Zig build also compiles its standard library for WebAssembly.
-- **Speed** comes from `bun run bench`, which runs Snek for 20 million instructions seven times and takes the median. It runs inside Bun's WebAssembly engine, not a browser, and it uses one small program, so only the ratio between the cores means much.
+- **Speed** comes from `bun run bench`. It loads a 22-byte program (see `MIXED_LOOP` in `bench.js`) that loops over arithmetic, `FX55`, `FX65` and `DXYN`, runs it for 20 million instructions seven times, and takes the median. It runs inside Bun's WebAssembly engine, not a browser, and it uses one small program, so only the ratio between the cores means much. It fails if the machine stops or the screen never changes.
 
 A few differences you can see in the code:
 
-- **Addresses.** Zig stores them as `u12`, so they cannot point past memory and `+%` wraps them at 0xFFF. Rust keeps `u16` and masks with `ADDRESS_MASK` after each addition.
+- **Addresses.** Zig stores them as `u12`, so they cannot point past memory and `+%` wraps them at 0xFFF. Rust keeps `u16` and masks with `ADDRESS_MASK` to wrap at 0xFFF.
 - **Quirks.** Zig declares `Quirks` as a `packed struct(u8)` and turns the bitmask into one with `@bitCast`. Rust writes out `Quirks::from_bits`.
 - **State behind the exports.** Zig keeps the machine in module-level variables. Rust keeps it in a `thread_local!` `RefCell` and borrows it in each export.
