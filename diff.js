@@ -5,18 +5,18 @@ const OCTO = 0b001110;
 const SCHIP = 0b100000;
 const masks = [VIP, OCTO, SCHIP, 0, ...[0, 1, 2, 3, 4, 5].map((bit) => VIP ^ (1 << bit))];
 
-// 5-quirks waits at a menu until key 1 is pressed.
-const pressOne = (frame, core) => {
+const pressOneAtMenu = (frame, core) => {
   if (frame === 300) core.key_down(1);
   if (frame === 310) core.key_up(1);
 };
-const scripts = { "5-quirks": { frames: 1500, keys: pressOne } };
+const scripts = { "5-quirks": { frames: 1500, keys: pressOneAtMenu } };
 
-// Games get a different key every 40 frames, so they get past their title screens.
-const cycleKeys = (frame, core) => {
-  const key = Math.floor(frame / 40) % 16;
-  if (frame % 40 === 0) core.key_down(key);
-  if (frame % 40 === 5) core.key_up(key);
+const FRAMES_PER_KEY = 40;
+const FRAMES_HELD = 5;
+const cycleKeysPastTitles = (frame, core) => {
+  const key = Math.floor(frame / FRAMES_PER_KEY) % 16;
+  if (frame % FRAMES_PER_KEY === 0) core.key_down(key);
+  if (frame % FRAMES_PER_KEY === FRAMES_HELD) core.key_up(key);
 };
 
 const screenHashes = {
@@ -82,7 +82,7 @@ for (const path of roms) for (const quirks of masks) {
 }
 
 for (const game of await Bun.file("web/games/games.json").json()) {
-  await lockstep(game.title, `web/games/${game.file}`, game.quirks, { frames: 900, steps: game.steps, keys: cycleKeys });
+  await lockstep(game.title, `web/games/${game.file}`, game.quirks, { frames: 900, steps: game.steps, keys: cycleKeysPastTitles });
   if (cores[0].is_stopped()) {
     console.error(`${game.title}: the machine stopped on an unknown opcode or a bad call`);
     process.exit(1);
