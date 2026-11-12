@@ -1,7 +1,8 @@
 const WIDTH = 64;
 const HEIGHT = 32;
 const FRAME_MS = 1000 / 60;
-const STEPS_PER_FRAME = 11;
+const MAX_STEPS_PER_FRAME = 1000;
+const STATS_INTERVAL_MS = 1000;
 const MAX_ROM_BYTES = 3584;
 const MAX_CATCHUP_MS = 5 * FRAME_MS;
 const JITTER_HEADROOM_MS = FRAME_MS / 2;
@@ -15,7 +16,10 @@ const KEYS = {
 
 const coreSelect = document.getElementById("core");
 const romInput = document.getElementById("rom");
+const speedInput = document.getElementById("speed");
+const pauseButton = document.getElementById("pause");
 const status = document.getElementById("status");
+const stats = document.getElementById("stats");
 const ctx = document.getElementById("screen").getContext("2d");
 const image = ctx.createImageData(WIDTH, HEIGHT);
 const pixels = new Uint32Array(image.data.buffer);
@@ -26,13 +30,41 @@ let rom = null;
 let romName = null;
 const held = new Set();
 let audio = null;
+let paused = false;
+let stepsPerFrame = speedInput.valueAsNumber;
+let coreBytes = 0;
+let busyMs = 0;
+let busyFrames = 0;
+let statsAt = 0;
+let microsPerFrame = null;
+
+function showStats() {
+  const time = microsPerFrame === null ? "" : `, ${microsPerFrame.toFixed(0)} µs per frame`;
+  stats.textContent = `${coreName}.wasm is ${coreBytes.toLocaleString("en-US")} bytes${time}`;
+}
+
+function resetStats() {
+  busyMs = 0;
+  busyFrames = 0;
+  statsAt = performance.now();
+  microsPerFrame = null;
+  showStats();
+}
+
+function setPaused(value) {
+  paused = value;
+  pauseButton.textContent = paused ? "Resume" : "Pause";
+}
 
 async function loadCore(name) {
   try {
     const response = await fetch(`${name}.wasm`);
     if (!response.ok) throw new Error(`${response.status}`);
-    core = (await WebAssembly.instantiate(await response.arrayBuffer(), {})).instance.exports;
+    const bytes = await response.arrayBuffer();
+    core = (await WebAssembly.instantiate(bytes, {})).instance.exports;
     coreName = name;
+    coreBytes = bytes.byteLength;
+    resetStats();
   } catch (error) {
     status.textContent = `Could not load ${name}.wasm (${error.message}). Did you run bun run build:${name}?`;
     coreSelect.value = coreName ?? name;
@@ -44,6 +76,7 @@ function startRom() {
   new Uint8Array(core.memory.buffer, core.rom_ptr(), rom.length).set(rom);
   core.load_rom(rom.length, crypto.getRandomValues(new Uint32Array(1))[0]);
   for (const key of held) core.key_down(key);
+  setPaused(false);
   status.textContent = `Running ${romName} on the ${coreName} core.`;
 }
 
@@ -78,10 +111,27 @@ function frame(now) {
   behind = Math.min(behind + (last === null ? 0 : now - last), MAX_CATCHUP_MS);
   last = now;
   if (!rom) return;
+  if (paused) {
+    behind = JITTER_HEADROOM_MS;
+    statsAt = now;
+    if (audio) audio.gain.gain.value = 0;
+    return;
+  }
+  const start = performance.now();
   while (behind >= FRAME_MS) {
-    core.step(STEPS_PER_FRAME);
+    core.step(stepsPerFrame);
     core.tick_timers();
     behind -= FRAME_MS;
+    busyFrames++;
+  }
+  busyMs += performance.now() - start;
+  // One frame is far below the browser's timer resolution, so only the average over a second means anything.
+  if (now - statsAt >= STATS_INTERVAL_MS && busyFrames > 0) {
+    microsPerFrame = (busyMs / busyFrames) * 1000;
+    busyMs = 0;
+    busyFrames = 0;
+    statsAt = now;
+    showStats();
   }
   draw();
   if (audio) audio.gain.gain.value = core.sound_on() ? 0.05 : 0;
@@ -107,6 +157,15 @@ romInput.addEventListener("change", async () => {
   startRom();
 });
 
+speedInput.addEventListener("change", () => {
+  const steps = Math.round(speedInput.valueAsNumber);
+  if (steps >= 1) stepsPerFrame = Math.min(steps, MAX_STEPS_PER_FRAME);
+  speedInput.value = stepsPerFrame;
+  resetStats();
+});
+
+pauseButton.addEventListener("click", () => setPaused(!paused));
+
 coreSelect.addEventListener("change", async () => {
   try {
     await loadCore(coreSelect.value);
@@ -117,8 +176,13 @@ coreSelect.addEventListener("change", async () => {
 });
 
 addEventListener("keydown", (e) => {
+  if (e.target === speedInput || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.code === "KeyP") {
+    if (!e.repeat) setPaused(!paused);
+    return;
+  }
   const key = KEYS[e.code];
-  if (key === undefined || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (key === undefined) return;
   e.preventDefault();
   if (audio) audio.context.resume();
   held.add(key);
