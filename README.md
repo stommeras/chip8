@@ -4,7 +4,7 @@ A CHIP-8 emulator written twice, in Zig and in Rust. Both compile to WebAssembly
 
 ## Run it
 
-You need Zig 0.17, Rust with the `wasm32-unknown-unknown` target (`rust/rust-toolchain.toml` installs it through rustup) and Bun.
+You need Zig 0.17.1, Rust with the `wasm32-unknown-unknown` target (`rust/rust-toolchain.toml` installs it through rustup) and Bun.
 
 ```sh
 bun run build:zig
@@ -73,7 +73,7 @@ Continuous integration runs both test suites, both builds and `bun run diff` on 
 | Clean release build | about 2.9 s | about 0.2 s |
 | Instructions per second | 160 to 170 million | about 115 million |
 
-These numbers come from Zig 0.17.1 (CI pins 0.17.0) and Rust 1.99.1 on one Linux machine. Rebuild and rerun before quoting any of it.
+These numbers come from Zig 0.17.1 and Rust 1.99.1 on one Linux machine. Rebuild and rerun before quoting any of it.
 
 - **Build settings.** Both cores are built for size, and the speed row measures those builds. Zig uses `ReleaseSmall`. Rust uses `opt-level = "z"`, LTO, one codegen unit, `panic = "abort"` and `strip` from `rust/Cargo.toml`.
 - **Source lines** count `root.zig` and `wasm.zig` against `lib.rs` and `wasm.rs` with `wc -l`. "Tests excluded" counts `root.zig` up to its test helpers (`machineWith`), `wasm.zig` up to its test constants (`vip_bits`), and `lib.rs` and `wasm.rs` up to `#[cfg(test)]`. `main.zig` is left out because the Rust core has no equivalent.
