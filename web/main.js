@@ -69,8 +69,9 @@ function setMuted(value) {
 }
 
 function fitCanvas() {
-  const scale = Math.max(1, Math.floor(canvas.parentElement.clientWidth / WIDTH));
-  canvas.style.width = `${WIDTH * scale}px`;
+  const ratio = window.devicePixelRatio;
+  const scale = Math.max(1, Math.floor((canvas.parentElement.clientWidth * ratio) / WIDTH));
+  canvas.style.width = `${(WIDTH * scale) / ratio}px`;
 }
 
 async function loadCore(name) {
@@ -155,6 +156,9 @@ function frame(now) {
   if (core.is_stopped()) status.textContent = `${romName} stopped: it hit an unknown opcode or broke the call stack.`;
 }
 
+new ResizeObserver(fitCanvas).observe(canvas.parentElement);
+addEventListener("resize", fitCanvas);
+
 await loadCore(coreSelect.value);
 romInput.disabled = false;
 requestAnimationFrame(frame);
@@ -215,7 +219,6 @@ quirksSelect.addEventListener("change", () => {
 
 pauseButton.addEventListener("click", () => setPaused(!paused));
 muteButton.addEventListener("click", () => setMuted(!muted));
-new ResizeObserver(fitCanvas).observe(canvas.parentElement);
 
 coreSelect.addEventListener("change", async () => {
   try {
@@ -228,12 +231,11 @@ coreSelect.addEventListener("change", async () => {
 
 addEventListener("keydown", (e) => {
   if (e.target === speedInput || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.code === "KeyP") {
-    if (!e.repeat) setPaused(!paused);
-    return;
-  }
-  if (e.code === "KeyM") {
-    if (!e.repeat) setMuted(!muted);
+  if (e.code === "KeyP" || e.code === "KeyM") {
+    e.preventDefault();
+    if (e.repeat) return;
+    if (e.code === "KeyP") setPaused(!paused);
+    else setMuted(!muted);
     return;
   }
   const key = KEYS[e.code];
