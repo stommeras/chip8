@@ -141,9 +141,43 @@ pub fn build(b: *std.Build) void {
     // A top level step for running all tests. dependOn can be called multiple
     // times and since the two run steps do not depend on one another, this will
     // make the two of them run in parallel.
+    // The WASM build. `zig build` installs it as zig-out/bin/chip8.wasm.
+    const wasm = b.addExecutable(.{
+        .name = "chip8",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/wasm.zig"),
+            .target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding }),
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "chip8", .module = b.createModule(.{
+                    .root_source_file = b.path("src/root.zig"),
+                    .target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding }),
+                    .optimize = optimize,
+                }) },
+            },
+        }),
+    });
+    wasm.entry = .disabled;
+    wasm.rdynamic = true;
+    b.installArtifact(wasm);
+
+    // The export tests run natively, against the same module as the CLI.
+    const wasm_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/wasm.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "chip8", .module = mod },
+            },
+        }),
+    });
+    const run_wasm_tests = b.addRunArtifact(wasm_tests);
+
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
+    test_step.dependOn(&run_wasm_tests.step);
 
     // Just like flags, top level steps are also listed in the `--help` menu.
     //
