@@ -71,7 +71,7 @@ Continuous integration runs both test suites, both builds and `bun run diff` on 
 | Source lines, tests excluded | 336 | 502 |
 | Source lines, tests included | 955 | 1,200 |
 | Clean release build | about 2.9 s | about 0.2 s |
-| Instructions per second | about 159 million | about 114 million |
+| Instructions per second | 160 to 170 million | about 115 million |
 
 These numbers come from Zig 0.17.1 (CI pins 0.17.0) and Rust 1.99.1 on one Linux machine. Rebuild and rerun before quoting any of it.
 

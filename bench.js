@@ -4,12 +4,20 @@ const STEPS = 20_000_000;
 const ROUNDS = 7;
 const MILLION = 1e6;
 
-// 6000 V0 = 0, 6105 V1 = 5, then loop: 7003 add 3 to V0, 8014 V0 += V1, 8103 V1 ^= V0,
-// A300 I = 0x300, F155 store V0 and V1, F165 load them back, A050 I = the font, D015 draw 5 rows,
-// 1204 jump to the loop.
-const MIXED_LOOP = Uint8Array.of(
-  0x60, 0x00, 0x61, 0x05, 0x70, 0x03, 0x80, 0x14, 0x81, 0x03, 0xa3, 0x00, 0xf1, 0x55, 0xf1, 0x65, 0xa0, 0x50, 0xd0, 0x15, 0x12, 0x04,
-);
+const opcodes = {
+  v0IsZero: 0x6000,
+  v1IsFive: 0x6105,
+  addThreeToV0: 0x7003,
+  addV1ToV0: 0x8014,
+  xorV0IntoV1: 0x8103,
+  iIs0x300: 0xa300,
+  storeV0AndV1: 0xf155,
+  loadV0AndV1: 0xf165,
+  iIsTheFont: 0xa050,
+  drawFiveRows: 0xd015,
+  jumpToAddThree: 0x1204,
+};
+const MIXED_LOOP = Uint8Array.from(Object.values(opcodes).flatMap((word) => [word >> 8, word & 0xff]));
 
 for (const name of ["zig", "rust"]) {
   const path = `web/${name}.wasm`;
