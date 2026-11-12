@@ -5,7 +5,6 @@ const masks = [VIP, 0, ...[0, 1, 2, 3, 4].map((bit) => VIP ^ (1 << bit))];
 // 5-quirks waits at a menu until key 1 is pressed.
 const scripts = { "5-quirks": { frames: 1500, press: 300, release: 310 } };
 
-// Hashes of the final screen of each test ROM under the VIP quirks, when it shows every test passed.
 const screenHashes = {
   "1-chip8-logo": "aec99a55453e7002",
   "2-ibm-logo": "b12be07c247d2a94",
