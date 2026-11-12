@@ -1,5 +1,6 @@
 import { Glob } from "bun";
 
+const masks = [0b11111, 0, ...[0, 1, 2, 3, 4].map((bit) => 0b11111 ^ (1 << bit))];
 // 5-quirks waits at a menu until key 1 is pressed.
 const scripts = { "5-quirks": { frames: 1500, press: 300, release: 310 } };
 
@@ -12,13 +13,14 @@ const cores = [await load("web/zig.wasm"), await load("web/rust.wasm")];
 const roms = [...new Glob("roms/*.ch8").scanSync()].sort();
 if (!roms.length) throw new Error("roms/ is empty, run bun run roms");
 
-for (const path of roms) {
-  const name = path.slice(5, -4);
-  const { frames = 300, press, release } = scripts[name] ?? {};
+for (const path of roms) for (const quirks of masks) {
+  const romName = path.slice(5, -4);
+  const name = `${romName} (quirks ${quirks.toString(2).padStart(5, "0")})`;
+  const { frames = 300, press, release } = scripts[romName] ?? {};
   const rom = new Uint8Array(await Bun.file(path).arrayBuffer());
   for (const c of cores) {
     new Uint8Array(c.memory.buffer, c.rom_ptr(), rom.length).set(rom);
-    if (c.load_rom(rom.length, 1) !== 0) throw new Error(`${name}: load_rom failed`);
+    if (c.load_rom(rom.length, 1, quirks) !== 0) throw new Error(`${name}: load_rom failed`);
   }
   for (let f = 0; f < frames; f++) {
     for (const c of cores) {
@@ -31,6 +33,10 @@ for (const path of roms) {
     const i = a.findIndex((v, j) => v !== b[j]);
     if (i >= 0) {
       console.error(`${name}: frame ${f} differs, first at x=${i % 64} y=${i >> 6} (zig ${a[i]}, rust ${b[i]})`);
+      process.exit(1);
+    }
+    if (cores[0].is_stopped() !== cores[1].is_stopped()) {
+      console.error(`${name}: frame ${f}, the cores disagree on whether the machine stopped`);
       process.exit(1);
     }
   }

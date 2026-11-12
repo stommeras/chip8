@@ -16,6 +16,7 @@ const KEYS = {
 
 const coreSelect = document.getElementById("core");
 const romInput = document.getElementById("rom");
+const quirksSelect = document.getElementById("quirks");
 const speedInput = document.getElementById("speed");
 const pauseButton = document.getElementById("pause");
 const status = document.getElementById("status");
@@ -74,7 +75,7 @@ async function loadCore(name) {
 
 function startRom() {
   new Uint8Array(core.memory.buffer, core.rom_ptr(), rom.length).set(rom);
-  core.load_rom(rom.length, crypto.getRandomValues(new Uint32Array(1))[0]);
+  core.load_rom(rom.length, crypto.getRandomValues(new Uint32Array(1))[0], Number(quirksSelect.value));
   for (const key of held) core.key_down(key);
   setPaused(false);
   status.textContent = `Running ${romName} on the ${coreName} core.`;
@@ -135,6 +136,7 @@ function frame(now) {
   }
   draw();
   if (audio) audio.gain.gain.value = core.sound_on() ? 0.05 : 0;
+  if (core.is_stopped()) status.textContent = `${romName} stopped: it hit an unknown opcode or broke the call stack.`;
 }
 
 await loadCore(coreSelect.value);
@@ -162,6 +164,10 @@ speedInput.addEventListener("change", () => {
   if (steps >= 1) stepsPerFrame = Math.min(steps, MAX_STEPS_PER_FRAME);
   speedInput.value = stepsPerFrame;
   resetStats();
+});
+
+quirksSelect.addEventListener("change", () => {
+  if (rom) startRom();
 });
 
 pauseButton.addEventListener("click", () => setPaused(!paused));

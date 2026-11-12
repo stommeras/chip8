@@ -72,6 +72,43 @@ impl Xoshiro256 {
     }
 }
 
+/// Behaviors that differ between CHIP-8 machines (SPEC.md). The bit order is the order of the fields.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Quirks {
+    pub vf_reset: bool,
+    pub shift_uses_vy: bool,
+    pub increment_i: bool,
+    pub jump_uses_v0: bool,
+    pub display_wait: bool,
+}
+
+impl Quirks {
+    pub const VIP: Quirks = Quirks {
+        vf_reset: true,
+        shift_uses_vy: true,
+        increment_i: true,
+        jump_uses_v0: true,
+        display_wait: true,
+    };
+    pub const SCHIP: Quirks = Quirks {
+        vf_reset: false,
+        shift_uses_vy: false,
+        increment_i: false,
+        jump_uses_v0: false,
+        display_wait: false,
+    };
+
+    pub fn from_bits(bits: u32) -> Quirks {
+        Quirks {
+            vf_reset: bits & 1 != 0,
+            shift_uses_vy: bits & 2 != 0,
+            increment_i: bits & 4 != 0,
+            jump_uses_v0: bits & 8 != 0,
+            display_wait: bits & 16 != 0,
+        }
+    }
+}
+
 pub struct Chip8 {
     pub memory: [u8; MEMORY_SIZE],
     pub v: [u8; 16],
@@ -84,6 +121,7 @@ pub struct Chip8 {
     pub display: [u8; WIDTH * HEIGHT],
     pub keys: [bool; 16],
     pub rng: Xoshiro256,
+    pub quirks: Quirks,
     /// While FX0A waits, the key that went down. FX0A finishes when it comes back up.
     pub held_key: Option<u8>,
 }
@@ -102,18 +140,21 @@ impl Chip8 {
             display: [0; WIDTH * HEIGHT],
             keys: [false; 16],
             rng: Xoshiro256::init(seed),
+            quirks: Quirks::VIP,
             held_key: None,
         };
         c.memory[FONT_START..][..FONT.len()].copy_from_slice(&FONT);
         c
     }
 
-    /// Resets the machine and copies `rom` to 0x200. On error the machine is left as it was.
+    /// Resets the machine, except for its quirks, and copies `rom` to 0x200. On error the machine is left as it was.
     pub fn load_rom(&mut self, rom: &[u8], seed: u64) -> Result<(), RomTooLarge> {
         if rom.len() > MEMORY_SIZE - PROGRAM_START {
             return Err(RomTooLarge);
         }
+        let quirks = self.quirks;
         *self = Chip8::init(seed);
+        self.quirks = quirks;
         self.memory[PROGRAM_START..][..rom.len()].copy_from_slice(rom);
         Ok(())
     }
@@ -180,18 +221,23 @@ impl Chip8 {
             0x7 => self.v[x] = self.v[x].wrapping_add(nn),
             0x8 => match n {
                 0x0 => self.v[x] = self.v[y],
-                // COSMAC VIP quirk: the logic ops reset VF (SPEC.md).
                 0x1 => {
                     self.v[x] |= self.v[y];
-                    self.v[0xF] = 0;
+                    if self.quirks.vf_reset {
+                        self.v[0xF] = 0;
+                    }
                 }
                 0x2 => {
                     self.v[x] &= self.v[y];
-                    self.v[0xF] = 0;
+                    if self.quirks.vf_reset {
+                        self.v[0xF] = 0;
+                    }
                 }
                 0x3 => {
                     self.v[x] ^= self.v[y];
-                    self.v[0xF] = 0;
+                    if self.quirks.vf_reset {
+                        self.v[0xF] = 0;
+                    }
                 }
                 0x4 => {
                     let (sum, carry) = self.v[x].overflowing_add(self.v[y]);
@@ -204,8 +250,9 @@ impl Chip8 {
                     self.v[0xF] = !borrow as u8;
                 }
                 0x6 => {
-                    let shifted_out = self.v[y] & 1;
-                    self.v[x] = self.v[y] >> 1;
+                    let source = self.shift_source(x, y);
+                    let shifted_out = source & 1;
+                    self.v[x] = source >> 1;
                     self.v[0xF] = shifted_out;
                 }
                 0x7 => {
@@ -214,8 +261,9 @@ impl Chip8 {
                     self.v[0xF] = !borrow as u8;
                 }
                 0xE => {
-                    let shifted_out = self.v[y] >> 7;
-                    self.v[x] = self.v[y] << 1;
+                    let source = self.shift_source(x, y);
+                    let shifted_out = source >> 7;
+                    self.v[x] = source << 1;
                     self.v[0xF] = shifted_out;
                 }
                 _ => return Err(StepError::UnknownOpcode),
@@ -226,7 +274,10 @@ impl Chip8 {
                 }
             }
             0xA => self.i = nnn,
-            0xB => self.pc = (nnn + self.v[0] as u16) & ADDRESS_MASK,
+            0xB => {
+                let register = if self.quirks.jump_uses_v0 { 0 } else { x };
+                self.pc = (nnn + self.v[register] as u16) & ADDRESS_MASK;
+            }
             0xC => self.v[x] = self.rng.next_u64() as u8 & nn,
             0xD => self.draw(x, y, n),
             0xE => {
@@ -259,24 +310,33 @@ impl Chip8 {
                     self.memory[((self.i + 1) & ADDRESS_MASK) as usize] = value / 10 % 10;
                     self.memory[((self.i + 2) & ADDRESS_MASK) as usize] = value % 10;
                 }
-                // Like the COSMAC VIP, these move I one step per register, so I ends at I + X + 1.
                 0x55 => {
-                    for &register in &self.v[..=x] {
-                        self.memory[self.i as usize] = register;
-                        self.i = (self.i + 1) & ADDRESS_MASK;
+                    for (offset, &register) in self.v[..=x].iter().enumerate() {
+                        self.memory[((self.i + offset as u16) & ADDRESS_MASK) as usize] = register;
                     }
+                    self.advance_i(x);
                 }
                 0x65 => {
-                    for register in &mut self.v[..=x] {
-                        *register = self.memory[self.i as usize];
-                        self.i = (self.i + 1) & ADDRESS_MASK;
+                    for (offset, register) in self.v[..=x].iter_mut().enumerate() {
+                        *register = self.memory[((self.i + offset as u16) & ADDRESS_MASK) as usize];
                     }
+                    self.advance_i(x);
                 }
                 _ => return Err(StepError::UnknownOpcode),
             },
             _ => unreachable!("op is 4 bits"),
         }
         Ok(())
+    }
+
+    fn shift_source(&self, x: usize, y: usize) -> u8 {
+        self.v[if self.quirks.shift_uses_vy { y } else { x }]
+    }
+
+    fn advance_i(&mut self, x: usize) {
+        if self.quirks.increment_i {
+            self.i = (self.i + x as u16 + 1) & ADDRESS_MASK;
+        }
     }
 
     /// FX0A: waits for a key to go down and come back up, then stores it in VX.
@@ -725,6 +785,65 @@ mod tests {
         run_steps(&mut c, 2);
         assert_eq!(c.v[..4], [7, 8, 9, 0]);
         assert_eq!(c.i, 0x303);
+    }
+
+    #[test]
+    fn with_vf_reset_off_8xy1_8xy2_and_8xy3_leave_vf_alone() {
+        let mut c = machine_with(&[
+            0x6F, 0x01, 0x60, 0x0F, 0x61, 0xF0, 0x80, 0x11, 0x80, 0x12, 0x80, 0x13,
+        ]);
+        c.quirks.vf_reset = false;
+        run_steps(&mut c, 6);
+        assert_eq!(c.v[0xF], 1);
+    }
+
+    #[test]
+    fn with_shift_uses_vy_off_8xy6_and_8xye_shift_vx_in_place() {
+        let mut right = machine_with(&[0x60, 0x03, 0x61, 0x08, 0x80, 0x16]);
+        right.quirks.shift_uses_vy = false;
+        run_steps(&mut right, 3);
+        assert_eq!(right.v[0], 0x01);
+        assert_eq!(right.v[0xF], 1);
+        assert_eq!(right.v[1], 0x08);
+
+        let mut left = machine_with(&[0x60, 0x81, 0x61, 0x08, 0x80, 0x1E]);
+        left.quirks.shift_uses_vy = false;
+        run_steps(&mut left, 3);
+        assert_eq!(left.v[0], 0x02);
+        assert_eq!(left.v[0xF], 1);
+        assert_eq!(left.v[1], 0x08);
+    }
+
+    #[test]
+    fn with_jump_uses_v0_off_bxnn_jumps_to_xnn_plus_vx() {
+        let mut c = machine_with(&[0x63, 0x08, 0xB3, 0x00]);
+        c.quirks.jump_uses_v0 = false;
+        run_steps(&mut c, 2);
+        assert_eq!(c.pc, 0x308);
+    }
+
+    #[test]
+    fn with_increment_i_off_fx55_and_fx65_leave_i_alone() {
+        let mut store = machine_with(&[0x60, 1, 0x61, 2, 0xA3, 0x00, 0xF1, 0x55]);
+        store.quirks.increment_i = false;
+        run_steps(&mut store, 4);
+        assert_eq!(store.memory[0x300..][..2], [1, 2]);
+        assert_eq!(store.i, 0x300);
+
+        let mut load = machine_with(&[0xA3, 0x00, 0xF1, 0x65]);
+        load.quirks.increment_i = false;
+        load.memory[0x300..][..2].copy_from_slice(&[7, 8]);
+        run_steps(&mut load, 2);
+        assert_eq!(load.v[..2], [7, 8]);
+        assert_eq!(load.i, 0x300);
+    }
+
+    #[test]
+    fn load_rom_keeps_the_quirks() {
+        let mut c = Chip8::init(0);
+        c.quirks = Quirks::SCHIP;
+        c.load_rom(&[], 0).unwrap();
+        assert_eq!(c.quirks, Quirks::SCHIP);
     }
 
     // Timers and random
