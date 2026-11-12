@@ -3,8 +3,9 @@ const HEIGHT = 32;
 const FRAME_MS = 1000 / 60;
 const STEPS_PER_FRAME = 11;
 const MAX_ROM_BYTES = 3584;
+const MAX_CATCHUP_MS = 5 * FRAME_MS;
+const JITTER_HEADROOM_MS = FRAME_MS / 2;
 
-// Keyboard position to CHIP-8 key, so it works on any layout.
 const KEYS = {
   Digit1: 0x1, Digit2: 0x2, Digit3: 0x3, Digit4: 0xC,
   KeyQ: 0x4, KeyW: 0x5, KeyE: 0x6, KeyR: 0xD,
@@ -40,14 +41,13 @@ async function loadCore(name) {
 }
 
 function startRom() {
-  // The memory view is made after every call that could move it.
   new Uint8Array(core.memory.buffer, core.rom_ptr(), rom.length).set(rom);
   core.load_rom(rom.length, crypto.getRandomValues(new Uint32Array(1))[0]);
   for (const key of held) core.key_down(key);
   status.textContent = `Running ${romName} on the ${coreName} core.`;
 }
 
-// AudioContext needs a user gesture. Picking a ROM is one, and so is a key press.
+// AudioContext needs a user gesture.
 function startAudio() {
   if (!audio) {
     const context = new AudioContext();
@@ -72,13 +72,10 @@ function draw() {
 }
 
 let last = null;
-// Starts half a frame ahead, so timestamp jitter doesn't alternate between 0 and 2 updates.
-let behind = FRAME_MS / 2;
+let behind = JITTER_HEADROOM_MS;
 function frame(now) {
   requestAnimationFrame(frame);
-  // Count real time, so a 120 Hz display doesn't run the game twice as fast.
-  // Capped, so a hidden tab doesn't run a burst of frames when it comes back.
-  behind = Math.min(behind + (last === null ? 0 : now - last), 5 * FRAME_MS);
+  behind = Math.min(behind + (last === null ? 0 : now - last), MAX_CATCHUP_MS);
   last = now;
   if (!rom) return;
   while (behind >= FRAME_MS) {
