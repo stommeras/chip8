@@ -58,7 +58,6 @@ pub const Chip8 = struct {
     display: [width * height]u8 = @splat(0),
     keys: [16]bool = @splat(false),
     rng: std.Random.Xoshiro256,
-    /// Survives `loadRom`.
     quirks: Quirks = .vip,
     /// While FX0A waits, the key that went down. FX0A finishes when it comes back up.
     held_key: ?u4 = null,
@@ -616,8 +615,6 @@ test "FX65 loads V0 through VX from I and moves I past them" {
     try std.testing.expectEqualSlices(u8, &.{ 7, 8, 9, 0 }, c.v[0..4]);
     try std.testing.expectEqual(0x303, c.i);
 }
-
-// Quirks
 
 test "with vf_reset off, 8XY1, 8XY2 and 8XY3 leave VF alone" {
     var c = try machineWith(&.{ 0x6F, 0x01, 0x60, 0x0F, 0x61, 0xF0, 0x80, 0x11, 0x80, 0x12, 0x80, 0x13 });

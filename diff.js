@@ -1,8 +1,7 @@
 import { Glob } from "bun";
 
-// 5-quirks waits at a menu until key 1 is pressed.
-// All quirks on, all off, and each quirk off on its own, so a mismatch in the bit order shows up.
 const masks = [0b11111, 0, ...[0, 1, 2, 3, 4].map((bit) => 0b11111 ^ (1 << bit))];
+// 5-quirks waits at a menu until key 1 is pressed.
 const scripts = { "5-quirks": { frames: 1500, press: 300, release: 310 } };
 
 async function load(path) {

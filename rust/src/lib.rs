@@ -121,7 +121,6 @@ pub struct Chip8 {
     pub display: [u8; WIDTH * HEIGHT],
     pub keys: [bool; 16],
     pub rng: Xoshiro256,
-    /// Survives `load_rom`.
     pub quirks: Quirks,
     /// While FX0A waits, the key that went down. FX0A finishes when it comes back up.
     pub held_key: Option<u8>,
@@ -787,8 +786,6 @@ mod tests {
         assert_eq!(c.v[..4], [7, 8, 9, 0]);
         assert_eq!(c.i, 0x303);
     }
-
-    // Quirks
 
     #[test]
     fn with_vf_reset_off_8xy1_8xy2_and_8xy3_leave_vf_alone() {
