@@ -12,4 +12,6 @@ bun run build:rust
 bun run dev
 ```
 
+Run `bun run roms` once to fetch the test ROMs, then pick one from `roms/` with the file chooser on the page.
+
 See `SPEC.md` for the interface both cores implement.

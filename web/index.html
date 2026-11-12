@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHIP-8</title>
+<style>
+  body { margin: 0; padding: 16px; background: #111; color: #ddd; font: 16px system-ui, sans-serif; }
+  main { max-width: 768px; margin: 0 auto; }
+  canvas { display: block; width: 100%; aspect-ratio: 2; image-rendering: pixelated; background: #000; }
+  label { margin-right: 16px; }
+  #controls { margin-bottom: 12px; }
+  #status { margin-top: 12px; min-height: 1.5em; }
+</style>
+</head>
+<body>
+<main>
+  <div id="controls">
+    <label>Core
+      <select id="core">
+        <option value="zig">Zig</option>
+        <option value="rust" disabled>Rust (not built yet)</option>
+      </select>
+    </label>
+    <label>ROM <input id="rom" type="file" accept=".ch8,.rom" disabled></label>
+  </div>
+  <canvas id="screen" width="64" height="32" role="img" aria-label="CHIP-8 screen"></canvas>
+  <div id="status" aria-live="polite">Pick a ROM to start. Keys: 1 2 3 4 / Q W E R / A S D F / Z X C V.</div>
+</main>
+<script type="module" src="main.js"></script>
+</body>
+</html>
