@@ -2,6 +2,7 @@ const WIDTH = 64;
 const HEIGHT = 32;
 const FRAME_MS = 1000 / 60;
 const STEPS_PER_FRAME = 11;
+const MAX_ROM_BYTES = 3584;
 
 // Keyboard position to CHIP-8 key, so it works on any layout.
 const KEYS = {
@@ -19,40 +20,47 @@ const image = ctx.createImageData(WIDTH, HEIGHT);
 const pixels = new Uint32Array(image.data.buffer);
 
 let core = null;
+let coreName = null;
 let rom = null;
-let held = new Set();
+let romName = null;
+const held = new Set();
 let audio = null;
 
 async function loadCore(name) {
-  const bytes = await (await fetch(`${name}.wasm`)).arrayBuffer();
-  core = (await WebAssembly.instantiate(bytes, {})).instance.exports;
+  try {
+    const response = await fetch(`${name}.wasm`);
+    if (!response.ok) throw new Error(`${response.status}`);
+    core = (await WebAssembly.instantiate(await response.arrayBuffer(), {})).instance.exports;
+    coreName = name;
+  } catch (error) {
+    status.textContent = `Could not load ${name}.wasm (${error.message}). Did you run bun run build:${name}?`;
+    coreSelect.value = coreName ?? name;
+    throw error;
+  }
 }
 
 function startRom() {
-  if (rom.length > 3584) {
-    status.textContent = `${rom.length} bytes is too big. The limit is 3584.`;
-    rom = null;
-    return;
-  }
   // The memory view is made after every call that could move it.
   new Uint8Array(core.memory.buffer, core.rom_ptr(), rom.length).set(rom);
   core.load_rom(rom.length, crypto.getRandomValues(new Uint32Array(1))[0]);
-  for (const k of held) core.key_down(k);
-  status.textContent = `Running ${romInput.files[0].name} on the ${coreSelect.value} core.`;
+  for (const key of held) core.key_down(key);
+  status.textContent = `Running ${romName} on the ${coreName} core.`;
 }
 
-// AudioContext needs a user gesture, and picking a ROM is one.
+// AudioContext needs a user gesture. Picking a ROM is one, and so is a key press.
 function startAudio() {
-  if (audio) return;
-  const context = new AudioContext();
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-  gain.gain.value = 0;
-  oscillator.type = "square";
-  oscillator.frequency.value = 440;
-  oscillator.connect(gain).connect(context.destination);
-  oscillator.start();
-  audio = { context, gain };
+  if (!audio) {
+    const context = new AudioContext();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    gain.gain.value = 0;
+    oscillator.type = "square";
+    oscillator.frequency.value = 440;
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start();
+    audio = { context, gain };
+  }
+  audio.context.resume();
 }
 
 function draw() {
@@ -64,7 +72,8 @@ function draw() {
 }
 
 let last = null;
-let behind = 0;
+// Starts half a frame ahead, so timestamp jitter doesn't alternate between 0 and 2 updates.
+let behind = FRAME_MS / 2;
 function frame(now) {
   requestAnimationFrame(frame);
   // Count real time, so a 120 Hz display doesn't run the game twice as fast.
@@ -82,18 +91,31 @@ function frame(now) {
 }
 
 await loadCore(coreSelect.value);
+romInput.disabled = false;
 requestAnimationFrame(frame);
 
 romInput.addEventListener("change", async () => {
   const file = romInput.files[0];
+  // Clearing the input lets the same file be picked again to restart it.
+  romInput.value = "";
   if (!file) return;
-  rom = new Uint8Array(await file.arrayBuffer());
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes.length > MAX_ROM_BYTES) {
+    status.textContent = `${file.name} is ${bytes.length} bytes. The limit is ${MAX_ROM_BYTES}.`;
+    return;
+  }
+  rom = bytes;
+  romName = file.name;
   startAudio();
   startRom();
 });
 
 coreSelect.addEventListener("change", async () => {
-  await loadCore(coreSelect.value);
+  try {
+    await loadCore(coreSelect.value);
+  } catch {
+    return;
+  }
   if (rom) startRom();
 });
 
@@ -101,6 +123,7 @@ addEventListener("keydown", (e) => {
   const key = KEYS[e.code];
   if (key === undefined || e.ctrlKey || e.metaKey || e.altKey) return;
   e.preventDefault();
+  if (audio) audio.context.resume();
   held.add(key);
   core.key_down(key);
 });
