@@ -2,6 +2,8 @@
 
 A CHIP-8 emulator written twice, in Zig and in Rust. Both compile to WebAssembly, export the same functions (see `SPEC.md`) and run on the same web page, so you can switch between them while a game is running. The project is a practice run before a fantasy console, and the point is to compare the two languages.
 
+You can try it without building anything at [lab.tommeras.no/chip8](https://lab.tommeras.no/chip8/). That page runs a snapshot of `web/`, so it only changes when someone copies a new build into the lab repo.
+
 ## Run it
 
 You need Zig 0.17.1, Rust with the `wasm32-unknown-unknown` target (`rust/rust-toolchain.toml` installs it through rustup) and Bun.
