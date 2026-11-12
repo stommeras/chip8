@@ -16,6 +16,7 @@ const KEYS = {
 
 const coreSelect = document.getElementById("core");
 const romInput = document.getElementById("rom");
+const gameSelect = document.getElementById("game");
 const quirksSelect = document.getElementById("quirks");
 const speedInput = document.getElementById("speed");
 const pauseButton = document.getElementById("pause");
@@ -29,6 +30,7 @@ let core = null;
 let coreName = null;
 let rom = null;
 let romName = null;
+let howto = "";
 const held = new Set();
 let audio = null;
 let paused = false;
@@ -78,7 +80,7 @@ function startRom() {
   core.load_rom(rom.length, crypto.getRandomValues(new Uint32Array(1))[0], Number(quirksSelect.value));
   for (const key of held) core.key_down(key);
   setPaused(false);
-  status.textContent = `Running ${romName} on the ${coreName} core.`;
+  status.textContent = `Running ${romName} on the ${coreName} core. ${howto}`.trim();
 }
 
 // AudioContext needs a user gesture.
@@ -140,6 +142,8 @@ function frame(now) {
 }
 
 await loadCore(coreSelect.value);
+const games = await fetch("games/games.json").then((r) => r.json()).catch(() => []);
+for (const [i, game] of games.entries()) gameSelect.add(new Option(`${game.title} (${game.author})`, i));
 romInput.disabled = false;
 requestAnimationFrame(frame);
 
@@ -155,8 +159,29 @@ romInput.addEventListener("change", async () => {
   }
   rom = bytes;
   romName = file.name;
+  howto = "";
+  gameSelect.value = "";
   startAudio();
   startRom();
+});
+
+gameSelect.addEventListener("change", async () => {
+  const game = games[gameSelect.value];
+  if (!game) return;
+  const response = await fetch(`games/${game.file}`);
+  if (!response.ok) {
+    status.textContent = `Could not load ${game.file} (${response.status}).`;
+    return;
+  }
+  rom = new Uint8Array(await response.arrayBuffer());
+  romName = game.title;
+  howto = game.howto ?? "";
+  quirksSelect.value = game.quirks;
+  speedInput.value = game.steps;
+  speedInput.dispatchEvent(new Event("change"));
+  startAudio();
+  startRom();
+  gameSelect.blur();
 });
 
 speedInput.addEventListener("change", () => {
