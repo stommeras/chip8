@@ -33,7 +33,8 @@ pub const Quirks = packed struct(u8) {
     increment_i: bool = true,
     jump_uses_v0: bool = true,
     display_wait: bool = true,
-    _: u3 = 0,
+    clip: bool = true,
+    _: u2 = 0,
 
     pub const vip: Quirks = .{};
     pub const schip: Quirks = .{
@@ -42,6 +43,11 @@ pub const Quirks = packed struct(u8) {
         .increment_i = false,
         .jump_uses_v0 = false,
         .display_wait = false,
+    };
+    pub const octo: Quirks = .{
+        .vf_reset = false,
+        .display_wait = false,
+        .clip = false,
     };
 };
 
@@ -241,13 +247,13 @@ pub const Chip8 = struct {
         self.v[0xF] = 0;
 
         for (0..n) |row| {
-            const py = start_y + row;
-            if (py >= height) break;
+            if (self.quirks.clip and start_y + row >= height) break;
+            const py = (start_y + row) % height;
             const sprite = self.memory[self.i +% @as(u12, @intCast(row))];
 
             for (0..8) |col| {
-                const px = start_x + col;
-                if (px >= width) break;
+                if (self.quirks.clip and start_x + col >= width) break;
+                const px = (start_x + col) % width;
                 if (sprite & (@as(u8, 0x80) >> @intCast(col)) == 0) continue;
 
                 const pixel = &self.display[py * width + px];
@@ -367,6 +373,17 @@ test "DXYN clips at the right and bottom edges" {
     try std.testing.expectEqual(1, c.display[31 * width + 62]);
     try std.testing.expectEqual(0, c.display[30 * width + 0]);
     try std.testing.expectEqual(0, c.display[0 * width + 62]);
+}
+
+test "with clip off, DXYN wraps around the right and bottom edges" {
+    // V0 = 62, so x = 62 and y = 30
+    var c = try machineWith(&.{ 0x60, 62, 0xA0, 0x50, 0xD0, 0x05 });
+    c.quirks.clip = false;
+    for (0..3) |_| try c.step();
+    try std.testing.expectEqual(1, c.display[30 * width + 62]);
+    try std.testing.expectEqual(1, c.display[30 * width + 0]);
+    try std.testing.expectEqual(1, c.display[0 * width + 62]);
+    try std.testing.expectEqual(1, c.display[1 * width + 62]);
 }
 
 test "unknown opcodes return an error" {

@@ -80,6 +80,7 @@ pub struct Quirks {
     pub increment_i: bool,
     pub jump_uses_v0: bool,
     pub display_wait: bool,
+    pub clip: bool,
 }
 
 impl Quirks {
@@ -89,6 +90,7 @@ impl Quirks {
         increment_i: true,
         jump_uses_v0: true,
         display_wait: true,
+        clip: true,
     };
     pub const SCHIP: Quirks = Quirks {
         vf_reset: false,
@@ -96,6 +98,15 @@ impl Quirks {
         increment_i: false,
         jump_uses_v0: false,
         display_wait: false,
+        clip: true,
+    };
+    pub const OCTO: Quirks = Quirks {
+        vf_reset: false,
+        shift_uses_vy: true,
+        increment_i: true,
+        jump_uses_v0: true,
+        display_wait: false,
+        clip: false,
     };
 
     pub fn from_bits(bits: u32) -> Quirks {
@@ -105,6 +116,7 @@ impl Quirks {
             increment_i: bits & 4 != 0,
             jump_uses_v0: bits & 8 != 0,
             display_wait: bits & 16 != 0,
+            clip: bits & 32 != 0,
         }
     }
 }
@@ -360,17 +372,17 @@ impl Chip8 {
         self.v[0xF] = 0;
 
         for row in 0..n as usize {
-            let py = start_y + row;
-            if py >= HEIGHT {
+            if self.quirks.clip && start_y + row >= HEIGHT {
                 break;
             }
+            let py = (start_y + row) % HEIGHT;
             let sprite = self.memory[((self.i + row as u16) & ADDRESS_MASK) as usize];
 
             for col in 0..8 {
-                let px = start_x + col;
-                if px >= WIDTH {
+                if self.quirks.clip && start_x + col >= WIDTH {
                     break;
                 }
+                let px = (start_x + col) % WIDTH;
                 if sprite & (0x80 >> col) == 0 {
                     continue;
                 }
@@ -510,6 +522,18 @@ mod tests {
         assert_eq!(c.display[31 * WIDTH + 62], 1);
         assert_eq!(c.display[30 * WIDTH], 0);
         assert_eq!(c.display[62], 0);
+    }
+
+    #[test]
+    fn with_clip_off_dxyn_wraps_around_the_right_and_bottom_edges() {
+        // V0 = 62, so x = 62 and y = 30
+        let mut c = machine_with(&[0x60, 62, 0xA0, 0x50, 0xD0, 0x05]);
+        c.quirks.clip = false;
+        run_steps(&mut c, 3);
+        assert_eq!(c.display[30 * WIDTH + 62], 1);
+        assert_eq!(c.display[30 * WIDTH], 1);
+        assert_eq!(c.display[62], 1);
+        assert_eq!(c.display[WIDTH + 62], 1);
     }
 
     #[test]
