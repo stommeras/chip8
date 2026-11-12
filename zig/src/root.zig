@@ -38,7 +38,7 @@ pub const Chip8 = struct {
     sound_timer: u8 = 0,
     display: [width * height]u8 = @splat(0),
     keys: [16]bool = @splat(false),
-    rng: std.Random.DefaultPrng,
+    rng: std.Random.Xoshiro256,
     /// While FX0A waits, the key that went down. FX0A finishes when it comes back up.
     held_key: ?u4 = null,
 
@@ -629,6 +629,13 @@ test "CXNN gives the same numbers for the same seed" {
     try a.step();
     try b.step();
     try std.testing.expectEqual(a.v[0], b.v[0]);
+}
+
+test "CXNN takes the low byte of each Xoshiro256 output" {
+    var c = try machineWith(&.{ 0xC0, 0xFF, 0xC1, 0xFF });
+    try runSteps(&c, 2);
+    const seed_0_outputs = [2]u64{ 0x53175d61490b23df, 0x61da6f3dc380d507 };
+    try std.testing.expectEqualSlices(u8, &.{ @truncate(seed_0_outputs[0]), @truncate(seed_0_outputs[1]) }, c.v[0..2]);
 }
 
 // Input

@@ -22,6 +22,10 @@ The release builds don't check array bounds, so the cores check for themselves. 
 
 The host decides the speed. The default is `step(11)` and then `tick_timers()` once per frame at 60 fps, which comes to about 660 instructions per second.
 
+## Random
+
+`CXNN` uses xoshiro256++. `load_rom` expands the seed into the generator's four 64-bit words with SplitMix64, as the xoshiro reference code suggests, and each `CXNN` takes the low byte of one 64-bit output. Both cores give the same `CXNN` values for the same seed.
+
 ## Quirks
 
 The cores follow the original COSMAC VIP:
