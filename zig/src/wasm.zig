@@ -70,6 +70,13 @@ test "load_rom rejects a ROM that is too long and accepts one that just fits" {
     try std.testing.expectEqual(0, load_rom(rom_capacity, 0));
 }
 
+test "step runs exactly n instructions" {
+    try load(&.{ 0x61, 0x01, 0x62, 0x02, 0x63, 0x03 });
+    step(2);
+    try std.testing.expectEqual(chip8.program_start + 4, machine.pc);
+    try std.testing.expectEqual(0, machine.v[3]);
+}
+
 test "step returns right after DXYN" {
     // I = font start, draw 5 rows, V1 = 1
     try load(&.{ 0xA0, 0x50, 0xD0, 0x05, 0x61, 0x01 });

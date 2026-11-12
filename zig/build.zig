@@ -138,20 +138,18 @@ pub fn build(b: *std.Build) void {
     // A run step that will run the second test executable.
     const run_exe_tests = b.addRunArtifact(exe_tests);
 
-    // A top level step for running all tests. dependOn can be called multiple
-    // times and since the two run steps do not depend on one another, this will
-    // make the two of them run in parallel.
     // The WASM build. `zig build` installs it as zig-out/bin/chip8.wasm.
+    const wasm_target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
     const wasm = b.addExecutable(.{
         .name = "chip8",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/wasm.zig"),
-            .target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding }),
+            .target = wasm_target,
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "chip8", .module = b.createModule(.{
                     .root_source_file = b.path("src/root.zig"),
-                    .target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding }),
+                    .target = wasm_target,
                     .optimize = optimize,
                 }) },
             },
@@ -171,9 +169,13 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "chip8", .module = mod },
             },
         }),
+        .filters = test_filters,
     });
     const run_wasm_tests = b.addRunArtifact(wasm_tests);
 
+    // A top level step for running all tests. dependOn can be called multiple
+    // times and since the run steps do not depend on one another, this will
+    // make all of them run in parallel.
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
