@@ -56,17 +56,17 @@ export fn sound_on() u32 {
     return @intFromBool(machine.sound_timer > 0);
 }
 
-const vip: u32 = @as(u8, @bitCast(chip8.Quirks.vip));
-const schip: u32 = @as(u8, @bitCast(chip8.Quirks.schip));
+const vip_bits: u32 = @as(u8, @bitCast(chip8.Quirks.vip));
+const schip_bits: u32 = @as(u8, @bitCast(chip8.Quirks.schip));
 
 fn load(rom: []const u8) !void {
     @memcpy(rom_buffer[0..rom.len], rom);
-    try std.testing.expectEqual(0, load_rom(@intCast(rom.len), 0, vip));
+    try std.testing.expectEqual(0, load_rom(@intCast(rom.len), 0, vip_bits));
 }
 
 test "load_rom rejects a ROM that is too long and accepts one that just fits" {
-    try std.testing.expectEqual(1, load_rom(rom_capacity + 1, 0, vip));
-    try std.testing.expectEqual(0, load_rom(rom_capacity, 0, vip));
+    try std.testing.expectEqual(1, load_rom(rom_capacity + 1, 0, vip_bits));
+    try std.testing.expectEqual(0, load_rom(rom_capacity, 0, vip_bits));
 }
 
 test "step runs exactly n instructions" {
@@ -87,15 +87,21 @@ test "step returns right after DXYN" {
 
 test "step runs on after DXYN when display_wait is off" {
     try load(&.{ 0xA0, 0x50, 0xD0, 0x05, 0x61, 0x01 });
-    try std.testing.expectEqual(0, load_rom(6, 0, schip));
+    try std.testing.expectEqual(0, load_rom(6, 0, schip_bits));
     step(10);
     try std.testing.expectEqual(1, machine.v[1]);
 }
 
+test "a rejected load_rom leaves the quirks alone" {
+    try std.testing.expectEqual(0, load_rom(0, 0, vip_bits));
+    try std.testing.expectEqual(1, load_rom(rom_capacity + 1, 0, schip_bits));
+    try std.testing.expectEqual(chip8.Quirks.vip, machine.quirks);
+}
+
 test "load_rom sets the quirks from the low five bits" {
-    try std.testing.expectEqual(0, load_rom(0, 0, schip | 0xE0));
+    try std.testing.expectEqual(0, load_rom(0, 0, schip_bits | 0xE0));
     try std.testing.expectEqual(chip8.Quirks.schip, machine.quirks);
-    try std.testing.expectEqual(0, load_rom(0, 0, vip));
+    try std.testing.expectEqual(0, load_rom(0, 0, vip_bits));
     try std.testing.expectEqual(chip8.Quirks.vip, machine.quirks);
 }
 

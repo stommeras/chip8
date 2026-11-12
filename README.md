@@ -14,7 +14,7 @@ bun run dev
 
 Run `bun run roms` once to fetch the test ROMs, then pick one from `roms/` with the file chooser on the page.
 
-On the page, the keys 1 2 3 4 / Q W E R / A S D F / Z X C V map to the CHIP-8 keypad, and P pauses. The "Quirks" menu switches between COSMAC VIP and CHIP-48 / SUPER-CHIP behavior and restarts the ROM. The "Steps per frame" field sets the speed (11 by default, about 660 instructions per second). Under the screen, the page shows the size of the loaded `.wasm` file and the average time the core spends on one frame. The browser rounds timers, so only the average over a second means anything.
+On the page, the keys 1 2 3 4 / Q W E R / A S D F / Z X C V map to the CHIP-8 keypad, and P pauses. The "Quirks" menu switches between COSMAC VIP and SUPER-CHIP behavior and restarts the ROM. The "Steps per frame" field sets the speed (11 by default, about 660 instructions per second). Under the screen, the page shows the size of the loaded `.wasm` file and the average time the core spends on one frame. The browser rounds timers, so only the average over a second means anything.
 
 `cd zig && zig build run -- ../roms/2-ibm-logo.ch8` runs a ROM for 1000 instructions and prints the screen as text. The Rust core has no equivalent.
 
@@ -31,7 +31,7 @@ See `SPEC.md` for the interface both cores implement.
 
 ## Comparison
 
-Both cores pass the same 62 tests (54 for the CPU, 8 for the WASM exports) and the Timendus test ROMs, and `bun run diff` shows identical framebuffers.
+Both cores pass the same 63 tests (54 for the CPU, 9 for the WASM exports) and the Timendus test ROMs, and `bun run diff` shows identical framebuffers.
 
 | | Zig 0.17.0 | Rust (stable) |
 | --- | --- | --- |

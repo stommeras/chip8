@@ -28,9 +28,9 @@ The host decides the speed. The default is `step(11)` and then `tick_timers()` o
 
 ## Quirks
 
-`load_rom` takes a bitmask. A set bit gives the COSMAC VIP behavior and a clear bit gives the CHIP-48 and SUPER-CHIP behavior. Bits above bit 4 are ignored.
+`load_rom` takes a bitmask. A set bit gives the COSMAC VIP behavior and a clear bit gives the SUPER-CHIP behavior. Bits above bit 4 are ignored.
 
-| Bit | Name | Set (VIP) | Clear (CHIP-48, SUPER-CHIP) |
+| Bit | Name | Set (VIP) | Clear (SUPER-CHIP) |
 | --- | --- | --- | --- |
 | 0 | `vf_reset` | `8XY1`, `8XY2` and `8XY3` reset VF to 0 | VF is left alone |
 | 1 | `shift_uses_vy` | `8XY6` and `8XYE` shift VY and store the result in VX | They shift VX in place |
@@ -38,7 +38,7 @@ The host decides the speed. The default is `step(11)` and then `tick_timers()` o
 | 3 | `jump_uses_v0` | `BNNN` jumps to NNN + V0 | `BXNN` jumps to XNN + VX |
 | 4 | `display_wait` | `DXYN` ends the current `step` call so the host can draw | `step` carries on |
 
-The VIP value is 31 and the CHIP-48 and SUPER-CHIP value is 0. CHIP-48 itself raises I by X after `FX55` and `FX65`, and the cores don't model that. Both cores follow SUPER-CHIP there.
+The VIP value is 31 and the SUPER-CHIP value is 0. CHIP-48 matches SUPER-CHIP except that it raises I by X after `FX55` and `FX65`, which the cores don't model.
 
 These behave the same under every setting:
 

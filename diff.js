@@ -1,7 +1,8 @@
 import { Glob } from "bun";
 
 // 5-quirks waits at a menu until key 1 is pressed.
-const presets = { vip: 0b11111, schip: 0 };
+// All quirks on, all off, and each quirk off on its own, so a mismatch in the bit order shows up.
+const masks = [0b11111, 0, ...[0, 1, 2, 3, 4].map((bit) => 0b11111 ^ (1 << bit))];
 const scripts = { "5-quirks": { frames: 1500, press: 300, release: 310 } };
 
 async function load(path) {
@@ -13,9 +14,10 @@ const cores = [await load("web/zig.wasm"), await load("web/rust.wasm")];
 const roms = [...new Glob("roms/*.ch8").scanSync()].sort();
 if (!roms.length) throw new Error("roms/ is empty, run bun run roms");
 
-for (const [path, [preset, quirks]] of roms.flatMap((r) => Object.entries(presets).map((p) => [r, p]))) {
-  const name = `${path.slice(5, -4)} (${preset})`;
-  const { frames = 300, press, release } = scripts[path.slice(5, -4)] ?? {};
+for (const path of roms) for (const quirks of masks) {
+  const romName = path.slice(5, -4);
+  const name = `${romName} (quirks ${quirks.toString(2).padStart(5, "0")})`;
+  const { frames = 300, press, release } = scripts[romName] ?? {};
   const rom = new Uint8Array(await Bun.file(path).arrayBuffer());
   for (const c of cores) {
     new Uint8Array(c.memory.buffer, c.rom_ptr(), rom.length).set(rom);

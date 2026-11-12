@@ -159,7 +159,8 @@ pub const Chip8 = struct {
                     self.v[0xF] = 1 - borrow;
                 },
                 0xE => {
-                    const shifted, const shifted_out = @shlWithOverflow(self.shiftSource(x, y), 1);
+                    const source = self.shiftSource(x, y);
+                    const shifted, const shifted_out = @shlWithOverflow(source, 1);
                     self.v[x] = shifted;
                     self.v[0xF] = shifted_out;
                 },
@@ -167,7 +168,10 @@ pub const Chip8 = struct {
             },
             0x9 => if (self.v[x] != self.v[y]) self.skip(),
             0xA => self.i = nnn,
-            0xB => self.pc = nnn +% self.v[if (self.quirks.jump_uses_v0) 0 else x],
+            0xB => {
+                const register = if (self.quirks.jump_uses_v0) 0 else x;
+                self.pc = nnn +% self.v[register];
+            },
             0xC => self.v[x] = self.rng.random().int(u8) & nn,
             0xD => self.draw(x, y, n),
             0xE => {
