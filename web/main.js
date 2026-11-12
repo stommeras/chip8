@@ -16,6 +16,7 @@ const KEYS = {
 
 const coreSelect = document.getElementById("core");
 const romInput = document.getElementById("rom");
+const gameSelect = document.getElementById("game");
 const quirksSelect = document.getElementById("quirks");
 const speedInput = document.getElementById("speed");
 const pauseButton = document.getElementById("pause");
@@ -29,6 +30,8 @@ let core = null;
 let coreName = null;
 let rom = null;
 let romName = null;
+let howto = "";
+let games = [];
 const held = new Set();
 let audio = null;
 let paused = false;
@@ -78,7 +81,7 @@ function startRom() {
   core.load_rom(rom.length, crypto.getRandomValues(new Uint32Array(1))[0], Number(quirksSelect.value));
   for (const key of held) core.key_down(key);
   setPaused(false);
-  status.textContent = `Running ${romName} on the ${coreName} core.`;
+  status.textContent = `Running ${romName} on the ${coreName} core. ${howto}`.trim();
 }
 
 // AudioContext needs a user gesture.
@@ -155,7 +158,34 @@ romInput.addEventListener("change", async () => {
   }
   rom = bytes;
   romName = file.name;
+  howto = "";
+  gameSelect.value = "";
   startAudio();
+  startRom();
+});
+
+gameSelect.addEventListener("change", async () => {
+  gameSelect.blur();
+  const game = games.find((g) => g.file === gameSelect.value);
+  if (!game) return;
+  startAudio();
+  let bytes;
+  try {
+    const response = await fetch(`games/${game.file}`);
+    if (!response.ok) throw new Error(`${response.status}`);
+    bytes = new Uint8Array(await response.arrayBuffer());
+  } catch (error) {
+    status.textContent = `Could not load ${game.file} (${error.message}).`;
+    gameSelect.value = "";
+    return;
+  }
+  if (gameSelect.value !== game.file) return;
+  rom = bytes;
+  romName = game.title;
+  howto = game.howto ?? "";
+  quirksSelect.value = game.quirks;
+  speedInput.value = game.steps;
+  speedInput.dispatchEvent(new Event("change"));
   startRom();
 });
 
@@ -207,3 +237,11 @@ addEventListener("blur", () => {
   for (const key of held) core.key_up(key);
   held.clear();
 });
+
+games = await fetch("games/games.json")
+  .then((r) => r.json())
+  .catch(() => {
+    status.textContent = "Could not load the game list. Use the ROM file chooser instead.";
+    return [];
+  });
+for (const game of games) gameSelect.add(new Option(`${game.title} (${game.author})`, game.file));

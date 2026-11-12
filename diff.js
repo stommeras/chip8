@@ -4,8 +4,20 @@ const VIP = 0b111111;
 const OCTO = 0b001110;
 const SCHIP = 0b100000;
 const masks = [VIP, OCTO, SCHIP, 0, ...[0, 1, 2, 3, 4, 5].map((bit) => VIP ^ (1 << bit))];
-// 5-quirks waits at a menu until key 1 is pressed.
-const scripts = { "5-quirks": { frames: 1500, press: 300, release: 310 } };
+
+const pressOneAtMenu = (frame, core) => {
+  if (frame === 300) core.key_down(1);
+  if (frame === 310) core.key_up(1);
+};
+const scripts = { "5-quirks": { frames: 1500, keys: pressOneAtMenu } };
+
+const FRAMES_PER_KEY = 40;
+const FRAMES_HELD = 5;
+const cycleKeysPastTitles = (frame, core) => {
+  const key = Math.floor(frame / FRAMES_PER_KEY) % 16;
+  if (frame % FRAMES_PER_KEY === 0) core.key_down(key);
+  if (frame % FRAMES_PER_KEY === FRAMES_HELD) core.key_up(key);
+};
 
 const screenHashes = {
   "1-chip8-logo": "aec99a55453e7002",
@@ -29,10 +41,7 @@ for (const name of Object.keys(screenHashes)) {
 
 const framebuffer = (core) => new Uint8Array(core.memory.buffer, core.framebuffer_ptr(), 64 * 32);
 
-for (const path of roms) for (const quirks of masks) {
-  const romName = path.slice(5, -4);
-  const name = `${romName} (quirks ${quirks.toString(2).padStart(6, "0")})`;
-  const { frames = 300, press, release } = scripts[romName] ?? {};
+async function lockstep(name, path, quirks, { frames = 300, steps = 11, keys = () => {} }) {
   const rom = new Uint8Array(await Bun.file(path).arrayBuffer());
   for (const c of cores) {
     new Uint8Array(c.memory.buffer, c.rom_ptr(), rom.length).set(rom);
@@ -40,9 +49,8 @@ for (const path of roms) for (const quirks of masks) {
   }
   for (let f = 0; f < frames; f++) {
     for (const c of cores) {
-      if (f === press) c.key_down(1);
-      if (f === release) c.key_up(1);
-      c.step(11);
+      keys(f, c);
+      c.step(steps);
       c.tick_timers();
     }
     const [a, b] = cores.map(framebuffer);
@@ -56,6 +64,13 @@ for (const path of roms) for (const quirks of masks) {
       process.exit(1);
     }
   }
+}
+
+for (const path of roms) for (const quirks of masks) {
+  const romName = path.slice(5, -4);
+  const name = `${romName} (quirks ${quirks.toString(2).padStart(6, "0")})`;
+  const options = scripts[romName] ?? {};
+  await lockstep(name, path, quirks, options);
   const screen = framebuffer(cores[0]);
   const hash = new Bun.CryptoHasher("sha256").update(screen).digest("hex").slice(0, 16);
   if (quirks === VIP && romName in screenHashes && hash !== screenHashes[romName]) {
@@ -63,5 +78,14 @@ for (const path of roms) for (const quirks of masks) {
     for (let y = 0; y < 32; y++) console.error([...screen.slice(y * 64, y * 64 + 64)].map((p) => (p ? "#" : ".")).join(""));
     process.exit(1);
   }
-  console.log(`${name}: ${frames} frames match`);
+  console.log(`${name}: ${options.frames ?? 300} frames match`);
+}
+
+for (const game of await Bun.file("web/games/games.json").json()) {
+  await lockstep(game.title, `web/games/${game.file}`, game.quirks, { frames: 900, steps: game.steps, keys: cycleKeysPastTitles });
+  if (cores[0].is_stopped()) {
+    console.error(`${game.title}: the machine stopped on an unknown opcode or a bad call`);
+    process.exit(1);
+  }
+  console.log(`${game.title}: 900 frames match`);
 }

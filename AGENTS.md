@@ -6,7 +6,8 @@ Two CHIP-8 emulators, one in Zig and one in Rust, that implement the same WASM i
 
 - `zig/` and `rust/`: one emulator core each, compiled to `wasm32`
 - `web/`: plain HTML and JavaScript, no bundler. It loads either core and draws to a `<canvas>`
-- `roms/`: test ROMs and games. Commit only ROMs whose license allows it
+- `roms/`: the test ROMs that `bun run roms` downloads. Not committed
+- `web/games/`: the games the page lists, with their license and source in `games.json`. Commit only ROMs whose license allows it
 - `SPEC.md`: the WASM interface both cores export. Change it only together with both cores and `web/`
 
 ## Versions
