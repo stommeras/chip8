@@ -20,9 +20,11 @@ const gameSelect = document.getElementById("game");
 const quirksSelect = document.getElementById("quirks");
 const speedInput = document.getElementById("speed");
 const pauseButton = document.getElementById("pause");
+const muteButton = document.getElementById("mute");
 const status = document.getElementById("status");
 const stats = document.getElementById("stats");
-const ctx = document.getElementById("screen").getContext("2d");
+const canvas = document.getElementById("screen");
+const ctx = canvas.getContext("2d");
 const image = ctx.createImageData(WIDTH, HEIGHT);
 const pixels = new Uint32Array(image.data.buffer);
 
@@ -34,6 +36,7 @@ let howto = "";
 let games = [];
 const held = new Set();
 let audio = null;
+let muted = false;
 let paused = false;
 let stepsPerFrame = speedInput.valueAsNumber;
 let coreBytes = 0;
@@ -58,6 +61,17 @@ function resetStats() {
 function setPaused(value) {
   paused = value;
   pauseButton.textContent = paused ? "Resume" : "Pause";
+}
+
+function setMuted(value) {
+  muted = value;
+  muteButton.textContent = muted ? "Unmute" : "Mute";
+}
+
+function fitCanvas() {
+  const ratio = window.devicePixelRatio;
+  const scale = Math.max(1, Math.floor((canvas.parentElement.clientWidth * ratio) / WIDTH));
+  canvas.style.width = `${(WIDTH * scale) / ratio}px`;
 }
 
 async function loadCore(name) {
@@ -138,9 +152,12 @@ function frame(now) {
     showStats();
   }
   draw();
-  if (audio) audio.gain.gain.value = core.sound_on() ? 0.05 : 0;
+  if (audio) audio.gain.gain.value = !muted && core.sound_on() ? 0.05 : 0;
   if (core.is_stopped()) status.textContent = `${romName} stopped: it hit an unknown opcode or broke the call stack.`;
 }
+
+new ResizeObserver(fitCanvas).observe(canvas.parentElement);
+addEventListener("resize", fitCanvas);
 
 await loadCore(coreSelect.value);
 romInput.disabled = false;
@@ -201,6 +218,7 @@ quirksSelect.addEventListener("change", () => {
 });
 
 pauseButton.addEventListener("click", () => setPaused(!paused));
+muteButton.addEventListener("click", () => setMuted(!muted));
 
 coreSelect.addEventListener("change", async () => {
   try {
@@ -213,8 +231,11 @@ coreSelect.addEventListener("change", async () => {
 
 addEventListener("keydown", (e) => {
   if (e.target === speedInput || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.code === "KeyP") {
-    if (!e.repeat) setPaused(!paused);
+  if (e.code === "KeyP" || e.code === "KeyM") {
+    e.preventDefault();
+    if (e.repeat) return;
+    if (e.code === "KeyP") setPaused(!paused);
+    else setMuted(!muted);
     return;
   }
   const key = KEYS[e.code];

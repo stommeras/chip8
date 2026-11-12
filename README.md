@@ -33,8 +33,11 @@ Open the address `bun run dev` prints and pick a game.
 - **Quirks** switches between COSMAC VIP and Octo (modern CHIP-8) behavior and restarts the ROM. Most games expect Octo. `SPEC.md` lists what each quirk changes.
 - **Steps per frame** sets the speed. The default of 11 is about 660 instructions per second.
 - **Pause** stops the machine. The P key does the same.
+- **Mute** silences the beep. The M key does the same.
 
 The keys 1 2 3 4 / Q W E R / A S D F / Z X C V map to the CHIP-8 keypad.
+
+The screen scales by a whole number of device pixels per CHIP-8 pixel, so the pixels stay square. In a 768 pixel column at 100% zoom that is 12.
 
 Under the screen, the page shows the size of the loaded `.wasm` file and the average time the core spends on one frame. The browser rounds timers, so only the average over a second means anything.
 
