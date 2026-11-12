@@ -1,7 +1,6 @@
-// Runs every ROM in roms/ through both cores in lockstep and stops at the first differing frame.
 import { Glob } from "bun";
 
-// Per-ROM frame count and key script. 5-quirks waits at a menu until key 1 is pressed.
+// 5-quirks waits at a menu until key 1 is pressed.
 const scripts = { "5-quirks": { frames: 1500, press: 300, release: 310 } };
 
 async function load(path) {
